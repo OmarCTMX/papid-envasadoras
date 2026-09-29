@@ -1,0 +1,379 @@
+/* ============================================================
+   DESIGN SYSTEM · PEGADURO — Dashboard de Envasadoras
+   Una envasadora con tres valvuladoras (liquidFill). El peso llena
+   cada bola de 0 a 100 y el número dentro es el peso directo.
+   Header: OF / item / lote.  Footer: logo + conexión + reloj.
+   ============================================================ */
+
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("/static/JetBrainsMono.woff2") format("woff2");
+    font-weight: 100 800;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    /* --- Superficies --- */
+    --bg: #f3efe6;      /* fondo de la pantalla */
+    --blanco: #e1ddd5;  /* superficie de las tarjetas */
+
+    /* --- Texto --- */
+    --ink: #161412;     /* texto y bordes principales */
+    --muted: #7a736a;   /* texto secundario (etiquetas) */
+
+    /* --- Color de marca / naranja --- */
+    --accent: #ee8935;
+
+    /* --- Colores de estado --- */
+    --ok: #4caf50;      /* conexión en vivo */
+    --err: #f44336;     /* offline */
+
+    /* --- Azul de la valvuladora (liquidFill) --- */
+    --agua: #2f4b8f;
+    --agua-claro: #4a6fc0;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "JetBrains Mono", monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ============================================================
+   HEADER — OF / nombre de la orden / lote
+   Tira delgada arriba: todo en una sola línea para dejarle el máximo
+   espacio a las bolas.
+   ============================================================ */
+.header {
+    flex-shrink: 0;
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 6px 20px;
+    border-bottom: 2px solid var(--ink);
+    background: var(--blanco);
+}
+
+/* OF + item code a la izquierda; el nombre de la orden se centra en el espacio
+   restante (ver .header-item-name). */
+.header-of {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.header-etiqueta {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.header-of-num {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+/* Nombre de la orden: ocupa lo que quede y recorta con "…" si es muy largo. */
+.header-item-name {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    /* Ocupa el espacio que queda tras la OF y centra su texto, sin mover el
+       número de orden de su lugar a la izquierda. */
+    flex: 1;
+    text-align: center;
+}
+
+/* Lote a la derecha del header, en una sola línea. */
+.header-lote {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.header-lote-valor {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.header-lote-valor .sep {
+    color: var(--muted);
+    margin: 0 3px;
+}
+
+/* ============================================================
+   CONTENEDOR PRINCIPAL — las tres valvuladoras en fila
+   ============================================================ */
+.envasadora {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px;
+}
+
+/* ============================================================
+   TARJETA DE VALVULADORA
+   arriba: bola (liquidFill) · abajo: setpoint + columna
+   ============================================================ */
+.valvuladora {
+    flex: 1 1 0;
+    max-width: 620px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+    background: var(--blanco);
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    box-shadow: 4px 4px 0 var(--ink);
+}
+
+.valvuladora-titulo {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+/* La bola: el canvas de ECharts se dibuja aquí dentro. */
+.bola {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    /* position:relative + hijo absoluto: el chart hereda un tamaño definido
+       desde el primer paint, así ECharts no mide 0 de alto al iniciar (que era
+       lo que dejaba las bolas encimadas hasta el primer resize). */
+    position: relative;
+}
+
+.bola-chart {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* ============================================================
+   VALORES DE ABAJO — setpoint y columna
+   ============================================================ */
+/* Las dos cajas (setpoint y columna) van lado a lado; cada una es vertical:
+   etiqueta arriba, número grande abajo. */
+.valores {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+}
+
+.valor-fila {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    background: var(--bg);
+}
+
+.valor-etiqueta {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+}
+
+.valor-numero {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    line-height: 1.05;
+}
+
+.valor-numero .unidad {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+}
+
+/* ============================================================
+   FOOTER / BARRA DE ESTADO  (mismo estilo que papid-dashboard)
+   logo + conexión a la izquierda, máquina al centro, reloj a la derecha.
+   ============================================================ */
+.barra-estado {
+    flex-shrink: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-top: 2px solid var(--ink);
+    background: var(--blanco);
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.footer-izq {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    justify-content: flex-start;
+}
+
+.logoPegaduro {
+    height: 40px;
+    width: auto;
+    display: block;
+    flex-shrink: 0;
+}
+
+.estado-conexion {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.estado-punto {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--ink);
+    flex-shrink: 0;
+}
+
+/* Nombre de la máquina: reemplaza al texto "En vivo/Offline" y toma el color
+   del estado, igual que el punto (dot). */
+.estado-maquina {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    white-space: nowrap;
+}
+
+.estado-conexion.online .estado-punto {
+    background: var(--ok);
+    animation: latido 1.6s ease-in-out infinite;
+}
+.estado-conexion.online .estado-maquina {
+    color: var(--ok);
+}
+
+.estado-conexion.offline .estado-punto {
+    background: var(--err);
+}
+.estado-conexion.offline .estado-maquina {
+    color: var(--err);
+}
+
+@keyframes latido {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+/* Centro: nombres de los trabajadores, en negro. */
+.footer-trabajadores {
+    flex: 2;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.estado-reloj {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    font-size: 2rem;
+    letter-spacing: 2px;
+    line-height: 1;
+    flex: 1;
+    text-align: right;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 900px) {
+    .envasadora {
+        gap: 14px;
+        padding: 14px;
+    }
+
+    .valvuladora {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .valor-numero {
+        font-size: 2rem;
+    }
+
+    .header-item-name {
+        display: none; /* en pantallas chicas prioriza OF y lote */
+    }
+
+    .estado-reloj {
+        font-size: 1.4rem;
+    }
+
+    .footer-trabajadores {
+        font-size: 1.1rem;
+    }
+
+    .estado-maquina {
+        font-size: 1.1rem;
+    }
+}

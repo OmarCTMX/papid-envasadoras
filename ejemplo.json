@@ -1,0 +1,14 @@
+{
+  "machine_code": "envasadora-1",
+  "of": "955086",
+  "item_code": "PESP",
+  "item_name": "COT. Pulido Espejo Blanco Pegaduro 10 kg",
+  "peso_producto": 10,
+  "lote_actual": 1,
+  "lotes_totales": 10,
+  "valvuladoras": [
+    { "peso": 7, "setpoint": 20, "columna": 5 },
+    { "peso": 5, "setpoint": 20, "columna": 5 },
+    { "peso": 9, "setpoint": 22, "columna": 6 }
+  ]
+}

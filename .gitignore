@@ -1,0 +1,14 @@
+# Binarios de compilación
+/bin/
+/tmp/
+*.exe
+
+# Variables de entorno (no subir credenciales)
+.env
+
+# Logs
+*.log
+build-errors.log
+
+# Editor
+.DS_Store

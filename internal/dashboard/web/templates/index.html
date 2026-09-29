@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Titulo}}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- ECharts + plugin liquidFill vendorizados localmente (sin internet). -->
+    <script src="/static/vendor/echarts.min.js"></script>
+    <script src="/static/vendor/echarts-liquidfill.min.js"></script>
+</head>
+<body>
+    <!-- ============ HEADER: OF / item / lote ============ -->
+    <header class="header">
+        <div class="header-of">
+            <span class="header-etiqueta">OF</span>
+            <span class="header-of-num" id="of-num">—</span>
+            <span class="header-item-name" id="item-name"></span>
+        </div>
+        <div class="header-lote">
+            <span class="header-etiqueta">Lote</span>
+            <span class="header-lote-valor">
+                <span id="lote-actual">—</span><span class="sep">/</span><span id="lotes-totales">—</span>
+            </span>
+        </div>
+    </header>
+
+    <!-- ============ LAS TRES VALVULADORAS ============ -->
+    <main class="envasadora" id="envasadora">
+        <!-- Se generan por JS al cargar, una vez, y se actualizan por SSE. -->
+    </main>
+
+    <!-- ============ FOOTER: logo + conexión + reloj ============ -->
+    <footer class="barra-estado" id="barra-estado">
+        <!-- Izquierda: logo + punto de estado + nombre de la máquina.
+             El nombre toma el color del estado (verde en vivo / rojo offline). -->
+        <div class="footer-izq">
+            <img class="logoPegaduro" src="/static/LogoPegaduro.png" alt="Pegaduro">
+            <span class="estado-conexion offline" id="estado-conexion">
+                <span class="estado-punto"></span>
+                <span class="estado-maquina" id="estado-maquina">{{.Maquina}}</span>
+            </span>
+        </div>
+
+        <!-- Centro: trabajadores asignados (fijos por ahora). -->
+        <span class="footer-trabajadores" id="footer-trabajadores">
+            Omar Ramirez &nbsp;·&nbsp; Michel Davalos
+        </span>
+
+        <!-- Derecha: reloj -->
+        <span class="estado-reloj" id="estado-reloj">--:--:--</span>
+    </footer>
+
+    <script>
+    // ============================================================
+    //  Configuración inyectada por el servidor.
+    // ============================================================
+    const NUM_VALVULADORAS = 3;
+
+    // ============================================================
+    //  Construcción de las tres bolas (una sola vez).
+    //  Cada bola es una gráfica ECharts liquidFill. El 100% de llenado es el
+    //  SETPOINT de esa valvuladora: el nivel de agua es peso/setpoint. El
+    //  número que se ve es el PESO directo (en kg).
+    // ============================================================
+    const contenedor = document.getElementById('envasadora');
+    const charts = [];   // instancias ECharts, una por valvuladora
+
+    function crearValvuladora(indice) {
+        const card = document.createElement('section');
+        card.className = 'valvuladora';
+        card.innerHTML =
+            '<div class="valvuladora-titulo">Valvuladora ' + (indice + 1) + '</div>' +
+            '<div class="bola"><div class="bola-chart" id="bola-' + indice + '"></div></div>' +
+            '<div class="valores">' +
+                '<div class="valor-fila">' +
+                    '<span class="valor-etiqueta">Setpoint</span>' +
+                    '<span class="valor-numero"><span id="setpoint-' + indice + '">—</span>' +
+                        '<span class="unidad">kg</span></span>' +
+                '</div>' +
+                '<div class="valor-fila">' +
+                    '<span class="valor-etiqueta">Columna</span>' +
+                    '<span class="valor-numero"><span id="columna-' + indice + '">—</span>' +
+                        '<span class="unidad">kg</span></span>' +
+                '</div>' +
+            '</div>';
+        // NOTA: el layout vertical (etiqueta arriba, número grande abajo) lo
+        // controla el CSS de .valor-fila; aquí solo va la estructura.
+        contenedor.appendChild(card);
+
+        const chart = echarts.init(document.getElementById('bola-' + indice));
+        chart.setOption(opcionesLiquidFill(0, 0));
+        charts.push(chart);
+    }
+
+    // Opciones del liquidFill. El 100% de llenado es el PESO_PRODUCTO de la
+    // orden (mismo para las 3 bolas): la fracción de agua es peso/pesoProducto
+    // (acotada a 0..1). El label muestra el peso directo en kg. Si el tope es 0
+    // o no llega, la bola queda vacía (no se divide entre cero).
+    function opcionesLiquidFill(peso, pesoProducto) {
+        const tope = pesoProducto > 0 ? pesoProducto : 0;
+        const fraccion = tope > 0 ? Math.max(0, Math.min(1, peso / tope)) : 0;
+        return {
+            series: [{
+                type: 'liquidFill',
+                radius: '95%',
+                center: ['50%', '50%'],
+                data: [fraccion, fraccion - 0.06],   // dos olas para dar profundidad
+                // Olas/agua en gris.
+                color: ['#b0aca4', '#8f8b83'],
+                backgroundStyle: {
+                    color: '#f3efe6',
+                    // Contorno interior naranja.
+                    borderColor: '#ee8935',
+                    borderWidth: 4
+                },
+                outline: {
+                    show: true,
+                    borderDistance: 4,
+                    itemStyle: {
+                        // Contorno exterior naranja.
+                        borderColor: '#ee8935',
+                        borderWidth: 5
+                    }
+                },
+                amplitude: 6,
+                waveLength: '80%',
+                label: {
+                    // El texto es el PESO directo (no un porcentaje) con la
+                    // unidad "kg" en tamaño menor debajo, usando rich text.
+                    formatter: function () {
+                        return '{peso|' + Math.round(peso) + '}{unidad|kg}';
+                    },
+                    rich: {
+                        peso: {
+                            fontSize: 150,
+                            fontWeight: 'bold',
+                            fontFamily: 'JetBrains Mono, monospace',
+                            color: '#161412'
+                        },
+                        unidad: {
+                            fontSize: 46,
+                            fontWeight: 'bold',
+                            fontFamily: 'JetBrains Mono, monospace',
+                            color: '#161412',
+                            padding: [56, 0, 0, 8]
+                        }
+                    },
+                    // insideColor aplica al texto que queda sobre el agua.
+                    insideColor: '#161412'
+                },
+                itemStyle: { opacity: 0.9 },
+                emphasis: { itemStyle: { opacity: 0.9 } }
+            }]
+        };
+    }
+
+    for (let i = 0; i < NUM_VALVULADORAS; i++) {
+        crearValvuladora(i);
+    }
+
+    // Redimensiona TODAS las bolas a su contenedor actual.
+    function ajustarBolas() {
+        charts.forEach(function (c) { c.resize(); });
+    }
+
+    // --- Arreglo del arranque ---
+    // Al hacer echarts.init el contenedor flex aún no tiene su tamaño final
+    // (la fuente puede estar cargando y el layout no se ha asentado), así que
+    // ECharts mide mal y las bolas se ven encimadas hasta el primer resize.
+    //
+    // Se ataca por tres frentes para no depender de mover la ventana:
+    //   1. Un ResizeObserver por bola: en cuanto su tarjeta toma tamaño (o
+    //      cambia), ECharts se reajusta solo. Cubre el caso general.
+    //   2. Un reajuste tras varios frames y a los 300ms, por si el observer
+    //      no dispara en algún navegador.
+    //   3. Un reajuste cuando terminan de cargar las fuentes (cambian métricas).
+    if (window.ResizeObserver) {
+        charts.forEach(function (c) {
+            const ro = new ResizeObserver(function () { c.resize(); });
+            ro.observe(c.getDom());
+        });
+    }
+
+    // Reajustes escalonados tras el primer render.
+    requestAnimationFrame(function () {
+        requestAnimationFrame(ajustarBolas);
+    });
+    setTimeout(ajustarBolas, 100);
+    setTimeout(ajustarBolas, 300);
+    window.addEventListener('load', ajustarBolas);
+
+    // Cuando las fuentes terminan de cargar, las métricas cambian: reajustar.
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(ajustarBolas);
+    }
+
+    // Redimensionar las bolas cuando cambia el tamaño de la ventana.
+    window.addEventListener('resize', ajustarBolas);
+
+    // ============================================================
+    //  Aplicar un estado completo a la UI (header + bolas + valores).
+    // ============================================================
+    const fmt = function (n) {
+        if (n === null || n === undefined || n === '') return '—';
+        return n;
+    };
+
+    function aplicarEstado(estado) {
+        // --- Header ---
+        document.getElementById('of-num').textContent = fmt(estado.of);
+        document.getElementById('item-name').textContent = estado.item_name || '';
+        document.getElementById('lote-actual').textContent = fmt(estado.lote_actual);
+        document.getElementById('lotes-totales').textContent = fmt(estado.lotes_totales);
+
+        // --- Valvuladoras ---
+        const vals = estado.valvuladoras || [];
+        for (let i = 0; i < NUM_VALVULADORAS; i++) {
+            const v = vals[i] || { peso: 0, setpoint: null, columna: null };
+            // El llenado usa el peso_producto de la orden como 100% (igual para
+            // las 3 bolas). El setpoint solo se muestra abajo.
+            charts[i].setOption(opcionesLiquidFill(v.peso || 0, estado.peso_producto || 0));
+            document.getElementById('setpoint-' + i).textContent = fmt(v.setpoint);
+            document.getElementById('columna-' + i).textContent = fmt(v.columna);
+        }
+    }
+
+    // ============================================================
+    //  SSE: el servidor empuja el estado como JSON en el evento "estado".
+    // ============================================================
+    const evtSource = new EventSource('/events');
+
+    evtSource.addEventListener('estado', function (e) {
+        try {
+            aplicarEstado(JSON.parse(e.data));
+        } catch (err) {
+            console.error('[SSE] estado inválido:', err);
+        }
+    });
+
+    // ============================================================
+    //  Footer: reloj + indicador de conexión en vivo/offline.
+    // ============================================================
+    const elReloj = document.getElementById('estado-reloj');
+    const elConexion = document.getElementById('estado-conexion');
+
+    // El nombre de la máquina reemplaza al texto "En vivo/Offline" y toma el
+    // color del estado (lo aplica el CSS según la clase online/offline).
+    function marcarConexion(enVivo) {
+        elConexion.classList.toggle('online', enVivo);
+        elConexion.classList.toggle('offline', !enVivo);
+    }
+
+    function tick() {
+        elReloj.textContent = new Date().toLocaleTimeString('es-MX', { hour12: false });
+    }
+    tick();
+    setInterval(tick, 1000);
+
+    evtSource.onopen = function () {
+        console.log('%c[SSE] Conexión abierta', 'color: green; font-weight: bold');
+        marcarConexion(true);
+    };
+    evtSource.onerror = function () {
+        // readyState 0 = reconectando, 2 = cerrada. En ambos no hay stream vivo.
+        marcarConexion(false);
+    };
+    </script>
+</body>
+</html>
