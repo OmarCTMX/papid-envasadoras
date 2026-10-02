@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Titulo}}</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <!-- ?v={{.Version}} invalida el caché del navegador en cada reinicio del
+         servidor, para que las NUC no se queden con un CSS viejo. -->
+    <link rel="stylesheet" href="/static/styles.css?v={{.Version}}">
     <!-- ECharts + plugin liquidFill vendorizados localmente (sin internet). -->
     <script src="/static/vendor/echarts.min.js"></script>
     <script src="/static/vendor/echarts-liquidfill.min.js"></script>
@@ -72,6 +74,21 @@
         card.innerHTML =
             '<div class="valvuladora-titulo">Valvuladora ' + (indice + 1) + '</div>' +
             '<div class="bola"><div class="bola-chart" id="bola-' + indice + '"></div></div>' +
+            // LEDs de estado (solo visuales; su on/off llega del PLC).
+            '<div class="leds">' +
+                '<div class="led-item led-rojo-wrap" id="led-paro-' + indice + '">' +
+                    '<span class="led led-rojo"><span class="led-bulb"></span></span>' +
+                    '<span class="led-label">Paro<br>Emergencia</span>' +
+                '</div>' +
+                '<div class="led-item" id="led-limpieza-' + indice + '">' +
+                    '<span class="led led-amarillo"><span class="led-bulb"></span></span>' +
+                    '<span class="led-label">Limpieza</span>' +
+                '</div>' +
+                '<div class="led-item" id="led-ciclo-' + indice + '">' +
+                    '<span class="led led-verde"><span class="led-bulb"></span></span>' +
+                    '<span class="led-label">Ciclo<br>Envase</span>' +
+                '</div>' +
+            '</div>' +
             '<div class="valores">' +
                 '<div class="valor-fila">' +
                     '<span class="valor-etiqueta">Setpoint</span>' +
@@ -222,7 +239,21 @@
             charts[i].setOption(opcionesLiquidFill(v.peso || 0, estado.peso_producto || 0));
             document.getElementById('setpoint-' + i).textContent = fmt(v.setpoint);
             document.getElementById('columna-' + i).textContent = fmt(v.columna);
+
+            // LEDs: on/off del PLC. Se leen de la valvuladora (v.leds) y, si no
+            // vienen ahí, del nivel de la envasadora (estado.leds), para que
+            // sirva tanto si son por valvuladora como si son de la máquina.
+            const leds = v.leds || estado.leds || {};
+            marcarLed('led-paro-' + i, leds.paro);
+            marcarLed('led-limpieza-' + i, leds.limpieza);
+            marcarLed('led-ciclo-' + i, leds.ciclo);
         }
+    }
+
+    // marcarLed enciende/apaga un LED por su id agregando/quitando la clase .on
+    function marcarLed(id, encendido) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('on', !!encendido);
     }
 
     // ============================================================

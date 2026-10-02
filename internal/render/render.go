@@ -30,6 +30,7 @@ func New(dirTemplates string) (*Renderer, error) {
 type DatosIndex struct {
 	Titulo  string // título de la pestaña del navegador
 	Maquina string // nombre visible de la envasadora (footer)
+	Version string // marca de versión para invalidar el caché del CSS
 }
 
 // Index renderiza la página completa.

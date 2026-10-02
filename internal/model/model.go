@@ -9,6 +9,14 @@ package model
 // TotalValvuladoras es la cantidad fija de valvuladoras por envasadora.
 const TotalValvuladoras = 3
 
+// Leds son los estados de las tres luces skeumórficas (solo visuales) que
+// llegan del PLC. true = encendida, false = apagada.
+type Leds struct {
+	Paro     bool `json:"paro"`     // paro de emergencia (rojo)
+	Limpieza bool `json:"limpieza"` // limpieza (amarillo)
+	Ciclo    bool `json:"ciclo"`    // ciclo de envase (verde)
+}
+
 // Valvuladora es el estado de una de las tres valvuladoras de la envasadora.
 type Valvuladora struct {
 	// Peso actual (kg). Es el número que se muestra dentro de la bola. El
@@ -21,6 +29,9 @@ type Valvuladora struct {
 	// Columna (kg): dato del PLC, editable desde el PLC o Node-RED. Solo se
 	// muestra.
 	Columna float64 `json:"columna"`
+	// Leds: estado de las tres luces del PLC de ESTA valvuladora. Opcional; si
+	// no viene, el frontend usa las luces a nivel de la envasadora (Estado.Leds).
+	Leds *Leds `json:"leds,omitempty"`
 }
 
 // Estado es el mensaje completo que llega por NATS y que se refleja en la UI.
@@ -52,6 +63,11 @@ type Estado struct {
 	LoteActual   int           `json:"lote_actual"`
 	LotesTotales int           `json:"lotes_totales"`
 	Valvuladoras []Valvuladora `json:"valvuladoras"`
+	// Leds a nivel de la envasadora (opcional). Se usa cuando las luces son de
+	// la máquina completa y no por valvuladora; el frontend las muestra
+	// repetidas debajo de cada bola. Si las valvuladoras traen su propio Leds,
+	// ese tiene prioridad.
+	Leds *Leds `json:"leds,omitempty"`
 }
 
 // EstadoVacio devuelve un estado inicial sin datos: tres valvuladoras en cero.

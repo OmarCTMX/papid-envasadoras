@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -86,6 +87,9 @@ func main() {
 	datosIndex := render.DatosIndex{
 		Titulo:  titulo,
 		Maquina: getenv("MAQUINA", machineCode),
+		// Versión = hora de arranque. Cambia en cada reinicio del servidor, así
+		// el navegador vuelve a pedir el CSS y no se queda con uno cacheado.
+		Version: strconv.FormatInt(time.Now().Unix(), 10),
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
