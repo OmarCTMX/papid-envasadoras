@@ -1,8 +1,8 @@
 /* ============================================================
    DESIGN SYSTEM · PEGADURO — Dashboard de Envasadoras
-   Una envasadora con tres valvuladoras (liquidFill). El peso llena
-   cada bola de 0 a 100 y el número dentro es el peso directo.
-   Header: OF / item / lote.  Footer: logo + conexión + reloj.
+   Una envasadora con tres valvuladoras. Cada tarjeta:
+     bola (liquidFill) → contador de bultos → [LEDs + setpoint/columna | tabla]
+   Header: OF / nombre de la orden / lote.  Footer: logo + conexión + reloj.
    ============================================================ */
 
 @font-face {
@@ -21,6 +21,7 @@
     /* --- Texto --- */
     --ink: #161412;     /* texto y bordes principales */
     --muted: #7a736a;   /* texto secundario (etiquetas) */
+    --linea: #b9b8b8;   /* líneas suaves (filas de la tabla) */
 
     /* --- Color de marca / naranja --- */
     --accent: #ee8935;
@@ -28,10 +29,6 @@
     /* --- Colores de estado --- */
     --ok: #4caf50;      /* conexión en vivo */
     --err: #f44336;     /* offline */
-
-    /* --- Azul de la valvuladora (liquidFill) --- */
-    --agua: #2f4b8f;
-    --agua-claro: #4a6fc0;
 }
 
 * {
@@ -54,7 +51,7 @@ body {
 /* ============================================================
    HEADER — OF / nombre de la orden / lote
    Tira delgada arriba: todo en una sola línea para dejarle el máximo
-   espacio a las bolas.
+   espacio a las tarjetas.
    ============================================================ */
 .header {
     flex-shrink: 0;
@@ -68,8 +65,7 @@ body {
     background: var(--blanco);
 }
 
-/* OF + item code a la izquierda; el nombre de la orden se centra en el espacio
-   restante (ver .header-item-name). */
+/* OF a la izquierda; el nombre de la orden se centra en el espacio restante. */
 .header-of {
     display: flex;
     align-items: baseline;
@@ -88,7 +84,7 @@ body {
 }
 
 .header-of-num {
-    font-size: 1.1rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: var(--ink);
     letter-spacing: 1px;
@@ -96,7 +92,7 @@ body {
     flex-shrink: 0;
 }
 
-/* Nombre de la orden: ocupa lo que quede y recorta con "…" si es muy largo. */
+/* Nombre de la orden: ocupa lo que quede, centrado, y recorta con "…". */
 .header-item-name {
     font-size: 1.6rem;
     font-weight: 700;
@@ -105,8 +101,6 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
-    /* Ocupa el espacio que queda tras la OF y centra su texto, sin mover el
-       número de orden de su lugar a la izquierda. */
     flex: 1;
     text-align: center;
 }
@@ -120,7 +114,7 @@ body {
 }
 
 .header-lote-valor {
-    font-size: 1.2rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: var(--ink);
     letter-spacing: 1px;
@@ -143,37 +137,28 @@ body {
     flex-direction: row;
     align-items: stretch;
     justify-content: center;
-    gap: 28px;
-    padding: 24px;
+    gap: 18px;
+    padding: 14px 18px;
 }
 
 /* ============================================================
-   TARJETA DE VALVULADORA
-   arriba: bola (liquidFill) · abajo: setpoint + columna
+   TARJETA DE VALVULADORA (sin título, la bola va pegada arriba)
+     .bola       → liquidFill, toma todo el alto sobrante
+     .contador   → bultos de la orden (hasta 4 dígitos)
+     .inferior   → [panel-estado: LEDs + setpoint/columna] [panel-tabla]
    ============================================================ */
 .valvuladora {
     flex: 1 1 0;
-    max-width: 620px;
+    max-width: 640px;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 8px 10px 10px;
     background: var(--blanco);
     border: 2px solid var(--ink);
     border-radius: 8px;
     box-shadow: 4px 4px 0 var(--ink);
-}
-
-.valvuladora-titulo {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: var(--muted);
-    flex-shrink: 0;
 }
 
 /* La bola: el canvas de ECharts se dibuja aquí dentro. */
@@ -182,8 +167,7 @@ body {
     width: 100%;
     min-height: 0;
     /* position:relative + hijo absoluto: el chart hereda un tamaño definido
-       desde el primer paint, así ECharts no mide 0 de alto al iniciar (que era
-       lo que dejaba las bolas encimadas hasta el primer resize). */
+       desde el primer paint, así ECharts no mide 0 de alto al iniciar. */
     position: relative;
 }
 
@@ -195,40 +179,94 @@ body {
 }
 
 /* ============================================================
-   LEDS DE ESTADO (skeumórficos, solo visuales)
-   Tres luces entre la bola y los cuadros de setpoint/columna:
-   paro de emergencia (rojo), limpieza (amarillo), ciclo (verde).
-   No son clicables; su estado (encendido/apagado) llega del PLC.
+   CONTADOR DE BULTOS — "píldora" debajo de la bola
+   Ancha a propósito: el número puede llegar a 4 dígitos (ej. 1000).
    ============================================================ */
-.leds {
-    width: 100%;
+.contador {
+    flex-shrink: 0;
+    align-self: center;
+    width: 82%;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-around;
-    gap: 8px;
-    padding: 4px 0 2px;
+    align-items: baseline;
+    justify-content: center;
+    gap: 14px;
+    padding: 2px 24px;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    background: var(--bg);
 }
 
-.led-item {
+.contador-etiqueta {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+}
+
+.contador-num {
+    font-size: clamp(1.5rem, 4.4vh, 2.6rem);
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 2px;
+    min-width: 4ch; /* reserva el espacio de 4 dígitos: no "brinca" al crecer */
+    text-align: center;
+}
+
+/* ============================================================
+   ZONA INFERIOR — dos paneles lado a lado
+   ============================================================ */
+.inferior {
+    flex-shrink: 0;
+    width: 100%;
+    height: clamp(170px, 31vh, 300px);
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
+    gap: 8px;
+}
+
+.panel-estado,
+.panel-tabla {
+    min-width: 0;
+    min-height: 0;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    background: var(--bg);
+}
+
+/* --- Panel izquierdo: LEDs en vertical + setpoint y columna --- */
+.panel-estado {
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 6px 10px;
+}
+
+/* Cada fila: LED + su etiqueta a la derecha. */
+.led-item {
+    display: flex;
     align-items: center;
-    gap: 6px;
-    flex: 1 1 0;
+    gap: 10px;
     min-width: 0;
 }
 
-/* El botón: contorno GRIS grueso alrededor (da la sensación de botón) con un
-   círculo de color plano en el centro. El color del centro lo pone la variante
-   (apagado = color oscuro; encendido = color vivo + glow). */
+/* ============================================================
+   LEDS DE ESTADO (skeumórficos, solo visuales)
+   Contorno gris grueso + círculo de color plano. Apagado = color oscuro;
+   encendido = color vivo + glow. Su on/off llega del PLC por valvuladora.
+   ============================================================ */
 .led {
+    --led: clamp(22px, 3.8vh, 40px);   /* un poco más chicos que antes (48px) */
     position: relative;
-    width: 48px;
-    height: 48px;
+    width: var(--led);
+    height: var(--led);
     border-radius: 50%;
     /* Contorno gris grueso del botón. */
     background: linear-gradient(145deg, #c9c5bc, #9a958c);
-    padding: 8px;              /* grosor del contorno gris */
+    padding: calc(var(--led) * 0.16);  /* grosor del contorno (≈ 6-7px) */
     box-shadow:
         inset 0 2px 2px rgba(255, 255, 255, 0.5),
         inset 0 -2px 3px rgba(0, 0, 0, 0.3),
@@ -236,8 +274,7 @@ body {
     flex-shrink: 0;
 }
 
-/* El centro: un círculo de color PLANO. El color base (apagado) y el vivo
-   (encendido) los define cada variante. */
+/* El centro: un círculo de color PLANO. */
 .led-bulb {
     display: block; /* Permite que el span respete width y height. */
     width: 100%;
@@ -247,7 +284,7 @@ body {
     transition: background 0.25s ease, box-shadow 0.3s ease;
 }
 
-/* --- APAGADO: color correspondiente--- */
+/* --- APAGADO: color correspondiente pero oscuro --- */
 .led-rojo     .led-bulb { background: #af2922; }
 .led-amarillo .led-bulb { background: #8a7414; }
 .led-verde    .led-bulb { background: #1f6b2a; }
@@ -255,84 +292,142 @@ body {
 /* --- ENCENDIDO: mismo color pero vivo + glow --- */
 .led-item.on .led-rojo .led-bulb {
     background: #f23227;
-    box-shadow: 0 0 14px 3px rgba(244, 67, 54, 0.85), 0 0 26px 6px rgba(244, 67, 54, 0.45);
+    box-shadow: 0 0 12px 3px rgba(244, 67, 54, 0.85), 0 0 22px 5px rgba(244, 67, 54, 0.45);
 }
 .led-item.on .led-amarillo .led-bulb {
     background: #f5c81f;
-    box-shadow: 0 0 14px 3px rgba(242, 192, 24, 0.85), 0 0 26px 6px rgba(242, 192, 24, 0.45);
+    box-shadow: 0 0 12px 3px rgba(242, 192, 24, 0.85), 0 0 22px 5px rgba(242, 192, 24, 0.45);
 }
 .led-item.on .led-verde .led-bulb {
     background: #3bd053;
-    box-shadow: 0 0 14px 3px rgba(52, 194, 74, 0.85), 0 0 26px 6px rgba(52, 194, 74, 0.45);
+    box-shadow: 0 0 12px 3px rgba(52, 194, 74, 0.85), 0 0 22px 5px rgba(52, 194, 74, 0.45);
 }
 
-/* Etiqueta del LED */
 .led-label {
-    font-size: 10px;
+    font-size: clamp(10px, 1.45vh, 13px);
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     color: var(--muted);
-    text-align: center;
-    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* La etiqueta se ve más nítida cuando el LED está encendido. */
 .led-item.on .led-label { color: var(--ink); }
 
-/* ============================================================
-   VALORES DE ABAJO — setpoint y columna
-   ============================================================ */
-/* Las dos cajas (setpoint y columna) van lado a lado; cada una es vertical:
-   etiqueta arriba, número grande abajo. */
-.valores {
-    width: 100%;
+/* --- Setpoint y columna: "15 kg  SETPOINT" --- */
+.dato {
     display: flex;
-    flex-direction: row;
-    gap: 12px;
-}
-
-.valor-fila {
-    flex: 1 1 0;
+    align-items: baseline;
+    gap: 8px;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 8px 10px;
-    border: 2px solid var(--ink);
-    border-radius: 6px;
-    background: var(--bg);
+    padding-top: 2px;
+    border-top: 1px solid var(--linea);
 }
 
-.valor-etiqueta {
-    font-size: 13px;
+.dato-num {
+    font-size: clamp(1.15rem, 3.3vh, 2rem);
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.dato-num .unidad {
+    font-size: 0.55em;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 3px;
+}
+
+.dato-etiqueta {
+    font-size: clamp(9px, 1.3vh, 12px);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.valor-numero {
-    font-size: 3rem;
+/* --- Panel derecho: tabla de bultos (ID / Peso / Fecha) --- */
+.panel-tabla {
+    overflow: hidden; /* las filas más viejas quedan fuera de la vista */
+}
+
+.tabla-bultos {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: clamp(10px, 1.5vh, 13px);
+    font-variant-numeric: tabular-nums;
+}
+
+.tabla-bultos col.c-id    { width: 24%; }
+.tabla-bultos col.c-peso  { width: 30%; }
+.tabla-bultos col.c-fecha { width: 46%; }
+
+.tabla-bultos th {
+    padding: 5px 6px;
+    text-align: left;
+    font-size: 0.9em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    background: var(--blanco);
+    border-bottom: 2px solid var(--ink);
+}
+
+.tabla-bultos td {
+    padding: 4px 6px;
     font-weight: 700;
     color: var(--ink);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 1px;
-    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid var(--linea);
 }
 
-.valor-numero .unidad {
-    font-size: 0.9rem;
+/* Líneas verticales entre columnas, como en el dibujo. */
+.tabla-bultos th + th,
+.tabla-bultos td + td {
+    border-left: 2px solid var(--ink);
+}
+
+/* El bulto más reciente (primera fila) resaltado en naranja. */
+.tabla-bultos tbody tr:first-child td {
+    color: var(--accent);
+}
+
+.tabla-bultos .fecha-dia {
     font-weight: 400;
     color: var(--muted);
-    margin-left: 4px;
+    margin-right: 4px;
+}
+
+.tabla-bultos .unidad {
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 2px;
+}
+
+/* Fila de "sin registros". */
+.tabla-bultos td.vacio {
+    text-align: center;
+    font-weight: 400;
+    color: var(--muted);
+    border-left: none;
+    padding: 14px 6px;
 }
 
 /* ============================================================
    FOOTER / BARRA DE ESTADO  (mismo estilo que papid-dashboard)
-   logo + conexión a la izquierda, máquina al centro, reloj a la derecha.
+   logo + conexión a la izquierda, trabajadores al centro, reloj a la derecha.
    ============================================================ */
 .barra-estado {
     flex-shrink: 0;
@@ -377,8 +472,7 @@ body {
     flex-shrink: 0;
 }
 
-/* Nombre de la máquina: reemplaza al texto "En vivo/Offline" y toma el color
-   del estado, igual que el punto (dot). */
+/* Nombre de la máquina: toma el color del estado, igual que el punto (dot). */
 .estado-maquina {
     font-size: 1.3rem;
     font-weight: 700;
@@ -434,17 +528,19 @@ body {
    ============================================================ */
 @media (max-width: 900px) {
     .envasadora {
-        gap: 14px;
-        padding: 14px;
+        gap: 10px;
+        padding: 10px;
     }
 
     .valvuladora {
-        padding: 12px;
-        gap: 10px;
+        padding: 6px;
     }
 
-    .valor-numero {
-        font-size: 2rem;
+    /* En pantallas angostas los paneles se apilan: LEDs arriba, tabla abajo. */
+    .inferior {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: clamp(220px, 40vh, 340px);
     }
 
     .header-item-name {

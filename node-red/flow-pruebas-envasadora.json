@@ -123,7 +123,7 @@
     "id": "inj_led_paro",
     "type": "inject",
     "z": "tab_env_test",
-    "name": "LED Paro 🔴 (on/off)",
+    "name": "LED Paro 🔴 (3 valv.)",
     "props": [
       { "p": "topic", "vt": "str" }
     ],
@@ -140,7 +140,7 @@
     "id": "inj_led_limpieza",
     "type": "inject",
     "z": "tab_env_test",
-    "name": "LED Limpieza 🟡 (on/off)",
+    "name": "LED Limpieza 🟡 (3 valv.)",
     "props": [
       { "p": "topic", "vt": "str" }
     ],
@@ -157,7 +157,7 @@
     "id": "inj_led_ciclo",
     "type": "inject",
     "z": "tab_env_test",
-    "name": "LED Ciclo 🟢 (on/off)",
+    "name": "LED Ciclo 🟢 (3 valv.)",
     "props": [
       { "p": "topic", "vt": "str" }
     ],
@@ -171,11 +171,183 @@
     "wires": [["fn_sim"]]
   },
   {
+    "id": "c_leds_valv",
+    "type": "comment",
+    "z": "tab_env_test",
+    "name": "LEDs por valvuladora (payload = índice 0/1/2)",
+    "info": "9 botones: cada LED (paro/limpieza/ciclo) de cada valvuladora (1/2/3).\nCada inject manda topic=led:<cual> y payload=<índice de la valvuladora>.\nAlterna solo el LED de esa valvuladora.",
+    "x": 600,
+    "y": 540,
+    "wires": []
+  },
+  {
+    "id": "inj_v1_paro",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V1 · Paro 🔴",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "0", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:paro",
+    "x": 390,
+    "y": 590,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v1_limp",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V1 · Limpieza 🟡",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "0", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:limpieza",
+    "x": 400,
+    "y": 630,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v1_ciclo",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V1 · Ciclo 🟢",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "0", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:ciclo",
+    "x": 390,
+    "y": 670,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v2_paro",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V2 · Paro 🔴",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "1", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:paro",
+    "x": 610,
+    "y": 590,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v2_limp",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V2 · Limpieza 🟡",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "1", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:limpieza",
+    "x": 620,
+    "y": 630,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v2_ciclo",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V2 · Ciclo 🟢",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "1", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:ciclo",
+    "x": 610,
+    "y": 670,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v3_paro",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V3 · Paro 🔴",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "2", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:paro",
+    "x": 830,
+    "y": 590,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v3_limp",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V3 · Limpieza 🟡",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "2", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:limpieza",
+    "x": 840,
+    "y": 630,
+    "wires": [["fn_sim"]]
+  },
+  {
+    "id": "inj_v3_ciclo",
+    "type": "inject",
+    "z": "tab_env_test",
+    "name": "V3 · Ciclo 🟢",
+    "props": [
+      { "p": "topic", "vt": "str" },
+      { "p": "payload", "v": "2", "vt": "num" }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "led:ciclo",
+    "x": 830,
+    "y": 670,
+    "wires": [["fn_sim"]]
+  },
+  {
     "id": "fn_sim",
     "type": "function",
     "z": "tab_env_test",
     "name": "Simulador (estado -> contrato)",
-    "func": "// SIMULADOR: mantiene el estado en flow.estado y produce en msg.payload el\n// MISMO contrato que consume el dashboard. En producción este nodo NO se usa;\n// el dato real entra por la zona B (MQTT/NATS in) directo al publicador.\n//\n// Regla clave: el llenado de la bola es peso/peso_producto. El PESO_PRODUCTO\n// viene de la ORDEN (campo pesoProducto) y es el 100% de las 3 bolas. Por eso\n// el peso simulado crece de 0 a peso_producto y reinicia (nunca lo rebasa).\n//\n// El SETPOINT y la COLUMNA son datos del PLC: solo se muestran debajo de la\n// bola y NO afectan el llenado. Los botones Subir/Bajar los editan (simulando\n// el cambio desde Node-RED/PLC), pero no tocan el peso ni el tope de la bola.\n\n// Orden de ejemplo (solo para mostrar; no está conectada a nada real).\nconst ORDEN = {\n    docNum: 955086,\n    itemCode: 'PESP',\n    itemName: 'COT. Pulido Espejo Blanco Pegaduro 10 kg',\n    pesoProducto: 10, // <- tope de las bolas (100%)\n    noLotes: 10\n};\n\nconst SETPOINT_INI = 20; // setpoint inicial del PLC (kg) - solo se muestra\nconst COLUMNA_INI = 5;   // columna inicial del PLC (kg) - solo se muestra\nconst PASO = 1;          // cuánto cambia setpoint/columna por click\n\nfunction acota(v, min, max) { return Math.max(min, Math.min(max, v)); }\n\n// Estado persistente entre mensajes.\nlet e = flow.get('estado');\nif (!e) {\n    e = {\n        machine_code: 'envasadora-1',\n        of: String(ORDEN.docNum),\n        item_code: ORDEN.itemCode,\n        item_name: ORDEN.itemName,\n        peso_producto: ORDEN.pesoProducto,\n        lote_actual: 1,\n        lotes_totales: ORDEN.noLotes,\n        // LEDs de la envasadora (del PLC). Son de la máquina completa; el\n        // dashboard los muestra iguales en las 3 bolas. Solo visuales.\n        leds: { paro: false, limpieza: false, ciclo: false },\n        valvuladoras: [\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI },\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI },\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI }\n        ]\n    };\n}\nif (!e.leds) { e.leds = { paro: false, limpieza: false, ciclo: false }; }\n\n// 'editando' define a qué valor del PLC afectan Subir/Bajar (setpoint/columna).\nlet editando = flow.get('editando') || 'setpoint';\n\n// Tope de llenado: el peso_producto de la orden (mismo para las 3 bolas).\nconst tope = e.peso_producto > 0 ? e.peso_producto : 0;\n\nswitch (msg.topic) {\n    case 'init':\n        // Reinicia los pesos a 0 (la orden y el lote se quedan).\n        e.valvuladoras.forEach(v => { v.peso = 0; });\n        break;\n\n    case 'sim':\n        // Crece hacia el peso_producto (100% de la bola) y reinicia al llegar.\n        // Se ACOTA al tope, así la bola nunca se rebasa.\n        e.valvuladoras.forEach(v => {\n            if (tope <= 0) { v.peso = 0; return; }\n            if (v.peso >= tope) {\n                v.peso = 0; // reinicia el ciclo de llenado\n            } else {\n                const inc = Math.max(0.3, tope / 15) + Math.random() * (tope / 30);\n                v.peso = acota(v.peso + inc, 0, tope);\n            }\n            v.peso = Math.round(v.peso * 10) / 10; // 1 decimal\n        });\n        break;\n\n    case 'subir':\n        // Solo edita el valor del PLC seleccionado; no toca peso ni tope.\n        e.valvuladoras.forEach(v => {\n            v[editando] = acota((v[editando] || 0) + PASO, 0, 9999);\n        });\n        break;\n\n    case 'bajar':\n        e.valvuladoras.forEach(v => {\n            v[editando] = acota((v[editando] || 0) - PASO, 0, 9999);\n        });\n        break;\n\n    case 'toggle':\n        editando = (editando === 'setpoint') ? 'columna' : 'setpoint';\n        flow.set('editando', editando);\n        break;\n\n    case 'led:paro':\n        e.leds.paro = !e.leds.paro;     // alterna encendido/apagado\n        break;\n    case 'led:limpieza':\n        e.leds.limpieza = !e.leds.limpieza;\n        break;\n    case 'led:ciclo':\n        e.leds.ciclo = !e.leds.ciclo;\n        break;\n}\n\nflow.set('estado', e);\nnode.status({ fill: 'blue', shape: 'dot', text: 'editando: ' + editando });\n\n// Salida: el contrato exacto que consume el dashboard.\nmsg.payload = e;\nreturn msg;\n",
+    "func": "// SIMULADOR: mantiene el estado en flow.estado y produce en msg.payload el\n// MISMO contrato que consume el dashboard. En producción este nodo NO se usa;\n// el dato real entra por la zona B (MQTT/NATS in) directo al publicador.\n//\n// Regla clave: el llenado de la bola es peso/peso_producto. El PESO_PRODUCTO\n// viene de la ORDEN (campo pesoProducto) y es el 100% de las 3 bolas. Por eso\n// el peso simulado crece de 0 a peso_producto y reinicia (nunca lo rebasa).\n//\n// El SETPOINT y la COLUMNA son datos del PLC: solo se muestran debajo de la\n// bola y NO afectan el llenado. Los botones Subir/Bajar los editan (simulando\n// el cambio desde Node-RED/PLC), pero no tocan el peso ni el tope de la bola.\n//\n// Los LEDS (paro/limpieza/ciclo) son POR VALVULADORA: cada bola tiene su propio\n// objeto leds. Los botones led:* alternan el LED en las 3 a la vez (o en una\n// sola si msg.payload trae el índice 0/1/2).\n\n// Orden de ejemplo (solo para mostrar; no está conectada a nada real).\nconst ORDEN = {\n    docNum: 955086,\n    itemCode: 'PESP',\n    itemName: 'COT. Pulido Espejo Blanco Pegaduro 10 kg',\n    pesoProducto: 10, // <- tope de las bolas (100%)\n    noLotes: 10\n};\n\nconst SETPOINT_INI = 20; // setpoint inicial del PLC (kg) - solo se muestra\nconst COLUMNA_INI = 5;   // columna inicial del PLC (kg) - solo se muestra\nconst PASO = 1;          // cuánto cambia setpoint/columna por click\n\nfunction acota(v, min, max) { return Math.max(min, Math.min(max, v)); }\n\n// Estado persistente entre mensajes.\nlet e = flow.get('estado');\nif (!e) {\n    e = {\n        machine_code: 'envasadora-1',\n        of: String(ORDEN.docNum),\n        item_code: ORDEN.itemCode,\n        item_name: ORDEN.itemName,\n        peso_producto: ORDEN.pesoProducto,\n        lote_actual: 1,\n        lotes_totales: ORDEN.noLotes,\n        // Cada valvuladora tiene SUS PROPIOS leds (del PLC): paro/limpieza/ciclo.\n        // Son por valvuladora, no de la máquina. Solo visuales.\n        valvuladoras: [\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI, leds: { paro: false, limpieza: false, ciclo: false }, bultos: 0, registros: [] },\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI, leds: { paro: false, limpieza: false, ciclo: false }, bultos: 0, registros: [] },\n            { peso: 0, setpoint: SETPOINT_INI, columna: COLUMNA_INI, leds: { paro: false, limpieza: false, ciclo: false }, bultos: 0, registros: [] }\n        ]\n    };\n}\n// Asegura que cada valvuladora tenga leds, contador de bultos y tabla (por si\n// el estado viene de una versión anterior del flow).\ne.valvuladoras.forEach(v => {\n    if (!v.leds) v.leds = { paro: false, limpieza: false, ciclo: false };\n    if (typeof v.bultos !== 'number') v.bultos = 0;\n    if (!Array.isArray(v.registros)) v.registros = [];\n});\n\n// Máximo de bultos que se guardan para la tabla (el dashboard muestra los que caben).\nconst MAX_REGISTROS = 20;\n\n// 'editando' define a qué valor del PLC afectan Subir/Bajar (setpoint/columna).\nlet editando = flow.get('editando') || 'setpoint';\n\n// Tope de llenado: el peso_producto de la orden (mismo para las 3 bolas).\nconst tope = e.peso_producto > 0 ? e.peso_producto : 0;\n\nswitch (msg.topic) {\n    case 'init':\n        // Reinicia pesos, contador de bultos y tabla (la orden y el lote se quedan).\n        e.valvuladoras.forEach(v => { v.peso = 0; v.bultos = 0; v.registros = []; });\n        break;\n\n    case 'sim':\n        // Crece hacia el peso_producto (100% de la bola) y reinicia al llegar.\n        // Se ACOTA al tope, así la bola nunca se rebasa.\n        e.valvuladoras.forEach(v => {\n            if (tope <= 0) { v.peso = 0; return; }\n            if (v.peso >= tope) {\n                // Bulto terminado: sube el contador y se agrega a la tabla\n                // (al inicio = el más nuevo). El peso final simula una pequeña\n                // variación alrededor del peso del producto.\n                v.bultos += 1;\n                v.registros.unshift({\n                    id: String(v.bultos),\n                    peso: Math.round((tope + (Math.random() - 0.5) * 0.1) * 100) / 100,\n                    fecha: new Date().toISOString()\n                });\n                if (v.registros.length > MAX_REGISTROS) v.registros.length = MAX_REGISTROS;\n                v.peso = 0; // reinicia el ciclo de llenado\n            } else {\n                const inc = Math.max(0.3, tope / 15) + Math.random() * (tope / 30);\n                v.peso = acota(v.peso + inc, 0, tope);\n            }\n            v.peso = Math.round(v.peso * 10) / 10; // 1 decimal\n        });\n        break;\n\n    case 'subir':\n        // Solo edita el valor del PLC seleccionado; no toca peso ni tope.\n        e.valvuladoras.forEach(v => {\n            v[editando] = acota((v[editando] || 0) + PASO, 0, 9999);\n        });\n        break;\n\n    case 'bajar':\n        e.valvuladoras.forEach(v => {\n            v[editando] = acota((v[editando] || 0) - PASO, 0, 9999);\n        });\n        break;\n\n    case 'toggle':\n        editando = (editando === 'setpoint') ? 'columna' : 'setpoint';\n        flow.set('editando', editando);\n        break;\n\n    case 'led:paro':\n    case 'led:limpieza':\n    case 'led:ciclo': {\n        // Qué LED: paro | limpieza | ciclo.\n        const cual = msg.topic.split(':')[1];\n        // A qué valvuladora: si msg.payload es un número (0,1,2) solo esa; si\n        // no, alterna en las 3 a la vez (práctico para probar). El PLC real\n        // mandará la señal por valvuladora de forma independiente.\n        const idx = (typeof msg.payload === 'number') ? msg.payload : null;\n        if (idx !== null && e.valvuladoras[idx]) {\n            e.valvuladoras[idx].leds[cual] = !e.valvuladoras[idx].leds[cual];\n        } else {\n            e.valvuladoras.forEach(v => { v.leds[cual] = !v.leds[cual]; });\n        }\n        break;\n    }\n}\n\nflow.set('estado', e);\nnode.status({ fill: 'blue', shape: 'dot', text: 'editando: ' + editando });\n\n// Salida: el contrato exacto que consume el dashboard.\nmsg.payload = e;\nreturn msg;\n",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,

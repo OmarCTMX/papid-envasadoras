@@ -67,3 +67,45 @@ func TestUnmarshalContrato(t *testing.T) {
 		t.Errorf("valvuladoras mal deserializadas: %+v", e.Valvuladoras)
 	}
 }
+
+// TestRegistrosIDFlexible verifica que el ID del bulto se acepte como texto o
+// como número, y que bultos/registros se deserialicen.
+func TestRegistrosIDFlexible(t *testing.T) {
+	raw := `{"valvuladoras":[{"peso":3,"bultos":1000,"registros":[
+		{"id":"B-12","peso":10.02,"fecha":"2026-09-30T11:27:32-06:00"},
+		{"id":11,"peso":9.98,"fecha":"2026-09-30T11:26:10-06:00"}]}]}`
+	var e Estado
+	if err := json.Unmarshal([]byte(raw), &e); err != nil {
+		t.Fatalf("no debía fallar el unmarshal: %v", err)
+	}
+	v := e.Valvuladoras[0]
+	if v.Bultos != 1000 {
+		t.Errorf("bultos: esperaba 1000, obtuve %d", v.Bultos)
+	}
+	if len(v.Registros) != 2 || v.Registros[0].ID != "B-12" || v.Registros[1].ID != "11" {
+		t.Errorf("registros mal deserializados: %+v", v.Registros)
+	}
+}
+
+// TestNormalizarRegistros verifica el tope de MaxRegistros (se conservan los
+// primeros, que son los más nuevos) y que nunca queden en nil.
+func TestNormalizarRegistros(t *testing.T) {
+	regs := make([]Registro, MaxRegistros+5)
+	for i := range regs {
+		regs[i].ID = FlexString(string(rune('a' + i%26)))
+	}
+	e := Estado{Valvuladoras: []Valvuladora{{Registros: regs, Bultos: -3}}}
+	e.Normalizar()
+	if len(e.Valvuladoras[0].Registros) != MaxRegistros {
+		t.Errorf("esperaba %d registros, obtuve %d", MaxRegistros, len(e.Valvuladoras[0].Registros))
+	}
+	if e.Valvuladoras[0].Registros[0].ID != "a" {
+		t.Errorf("debía conservar los primeros (más nuevos)")
+	}
+	if e.Valvuladoras[0].Bultos != 0 {
+		t.Errorf("bultos negativos debían llevarse a 0")
+	}
+	if e.Valvuladoras[1].Registros == nil {
+		t.Errorf("las valvuladoras rellenadas debían traer registros vacíos, no nil")
+	}
+}
