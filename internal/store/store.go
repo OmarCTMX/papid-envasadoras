@@ -39,13 +39,54 @@ func (s *Store) MachineCode() string {
 	return s.machineCode
 }
 
-// Aplicar reemplaza el estado con el que llegó por NATS y notifica el cambio.
-// El estado se normaliza para que siempre tenga tres valvuladoras válidas.
+// Aplicar actualiza SOLO los datos de PROCESO (los que manda el distribuidor:
+// valvuladoras, peso_producto). CONSERVA los datos del signed (OF, item, lote y
+// personal), que llegan por el emitter y mandan sobre el header/footer. Así el
+// blob del PLC no borra la orden. El estado se normaliza para tener siempre
+// tres valvuladoras.
 func (s *Store) Aplicar(estado model.Estado) {
 	estado.Normalizar()
 
 	s.mu.Lock()
+	// La orden y el personal son del signed: se conservan, no los pisa el PLC.
+	estado.OF = s.estado.OF
+	estado.ItemCode = s.estado.ItemCode
+	estado.ItemName = s.estado.ItemName
+	estado.LoteActual = s.estado.LoteActual
+	estado.LotesTotales = s.estado.LotesTotales
+	estado.Trabajadores = s.estado.Trabajadores
 	s.estado = estado
+	onChange := s.onChange
+	s.mu.Unlock()
+
+	if onChange != nil {
+		onChange()
+	}
+}
+
+// DatosOrden son los campos que vienen del signed (vía emitter): el header del
+// dashboard (OF/item/lote) y el personal. NO incluye nada del proceso (bolas).
+type DatosOrden struct {
+	OF           string
+	ItemCode     string
+	ItemName     string
+	LoteActual   int
+	LotesTotales int
+	Trabajadores []string
+}
+
+// AplicarOrden actualiza SOLO los datos del signed (orden + personal) sin tocar
+// los datos de proceso (peso, setpoint, columna, leds, bultos). Se llama al
+// escuchar papid.emitter.<code>. Así la orden/personal mandan desde el signed
+// y las bolas desde el distribuidor, sin pisarse.
+func (s *Store) AplicarOrden(d DatosOrden) {
+	s.mu.Lock()
+	s.estado.OF = d.OF
+	s.estado.ItemCode = d.ItemCode
+	s.estado.ItemName = d.ItemName
+	s.estado.LoteActual = d.LoteActual
+	s.estado.LotesTotales = d.LotesTotales
+	s.estado.Trabajadores = d.Trabajadores
 	onChange := s.onChange
 	s.mu.Unlock()
 

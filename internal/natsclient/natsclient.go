@@ -9,6 +9,8 @@ package natsclient
 import (
 	"encoding/json"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -17,8 +19,18 @@ import (
 	"papid-envasadoras/internal/store"
 )
 
-// subjectPrefix + MACHINE_CODE forma el subject de esta envasadora.
+// subjectPrefix + MACHINE_CODE forma el subject de esta envasadora (datos de
+// proceso, que publica el distribuidor).
 const subjectPrefix = "papid.envasadora."
+
+// emitterPrefix + MACHINE_CODE es el subject del emitter de personal, de donde
+// el dashboard toma los NOMBRES del personal asignado para el footer.
+const emitterPrefix = "papid.emitter."
+
+// SubjectEmitter devuelve el subject del emitter para esta envasadora.
+func (c Config) SubjectEmitter() string {
+	return emitterPrefix + c.MachineCode
+}
 
 // Config con los datos de conexión.
 type Config struct {
@@ -109,4 +121,77 @@ func Suscribir(nc *nats.Conn, cfg Config, st *store.Store) (*nats.Subscription, 
 	}
 	log.Printf("[nats] Suscrito a %s", subject)
 	return sub, nil
+}
+
+// mensajeEmitter es lo que el emitter publica en papid.emitter.<code>: la orden
+// (order_details) y el personal. De aquí salen el header (OF/item/lote) y los
+// nombres del footer del dashboard. Los campos numéricos de la orden llegan
+// como texto, así que se convierten al aplicar.
+type mensajeEmitter struct {
+	MachineCode  string `json:"machine_code"`
+	OrderDetails struct {
+		OrderID       string `json:"order_id"`
+		DocNum        string `json:"doc_num"`
+		ProductName   string `json:"product_name"`
+		LotesActuales string `json:"lotes_actuales"`
+		LotesTotales  string `json:"lotes_totales"`
+	} `json:"order_details"`
+	Personnel []struct {
+		Nombre string `json:"nombre"`
+	} `json:"personnel"`
+}
+
+// SuscribirEmitter escucha papid.emitter.<code> y mete la ORDEN y el PERSONAL
+// (del signed) en el store: OF, item, lote y los nombres del footer. Los datos
+// de las bolas NO se tocan aquí (vienen del distribuidor). Es independiente: si
+// el emitter no corre, el dashboard funciona igual, solo sin orden ni nombres.
+func SuscribirEmitter(nc *nats.Conn, cfg Config, st *store.Store) (*nats.Subscription, error) {
+	subject := cfg.SubjectEmitter()
+	sub, err := nc.Subscribe(subject, func(m *nats.Msg) {
+		var msg mensajeEmitter
+		if err := json.Unmarshal(m.Data, &msg); err != nil {
+			log.Printf("[nats] Mensaje inválido en %s (ignorado): %v", subject, err)
+			return
+		}
+		if msg.MachineCode != "" && msg.MachineCode != cfg.MachineCode {
+			return // no es de esta envasadora
+		}
+
+		nombres := make([]string, 0, len(msg.Personnel))
+		for _, p := range msg.Personnel {
+			if p.Nombre != "" {
+				nombres = append(nombres, p.Nombre)
+			}
+		}
+
+		// OF: se prefiere doc_num; si no viene, order_id.
+		of := msg.OrderDetails.DocNum
+		if of == "" {
+			of = msg.OrderDetails.OrderID
+		}
+
+		st.AplicarOrden(store.DatosOrden{
+			OF:           of,
+			ItemName:     msg.OrderDetails.ProductName,
+			LoteActual:   aEntero(msg.OrderDetails.LotesActuales),
+			LotesTotales: aEntero(msg.OrderDetails.LotesTotales),
+			Trabajadores: nombres,
+		})
+		log.Printf("[nats] Orden/personal de %s: OF=%q lotes=%s/%s trabajadores=%d",
+			subject, of, msg.OrderDetails.LotesActuales, msg.OrderDetails.LotesTotales, len(nombres))
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("[nats] Suscrito a %s (orden + personal del signed)", subject)
+	return sub, nil
+}
+
+// aEntero convierte el texto de los lotes a int; "" o inválido -> 0.
+func aEntero(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return n
 }

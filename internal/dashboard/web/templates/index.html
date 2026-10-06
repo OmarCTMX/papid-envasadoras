@@ -44,10 +44,8 @@
             </span>
         </div>
 
-        <!-- Centro: trabajadores asignados (fijos por ahora). -->
-        <span class="footer-trabajadores" id="footer-trabajadores">
-            Omar Ramirez &nbsp;·&nbsp; Michel Davalos
-        </span>
+        <!-- Centro: trabajadores asignados (del emitter, por SSE). -->
+        <span class="footer-trabajadores" id="footer-trabajadores">—</span>
 
         <!-- Derecha: reloj -->
         <span class="estado-reloj" id="estado-reloj">--:--:--</span>
@@ -60,63 +58,90 @@
     const NUM_VALVULADORAS = 3;
 
     // ============================================================
-    //  Construcción de las tres bolas (una sola vez).
-    //  Cada bola es una gráfica ECharts liquidFill. El 100% de llenado es el
-    //  SETPOINT de esa valvuladora: el nivel de agua es peso/setpoint. El
-    //  número que se ve es el PESO directo (en kg).
+    //  Construcción de las tres tarjetas (una sola vez).
+    //  Layout de cada tarjeta (sin título, la bola pegada arriba):
+    //    bola (liquidFill)  →  contador de bultos  →
+    //    [ LEDs vertical + setpoint/columna ] [ tabla ID / Peso / Fecha ]
+    //  El 100% de llenado de la bola es el PESO_PRODUCTO de la orden; el número
+    //  que se ve es el PESO directo (en kg).
     // ============================================================
     const contenedor = document.getElementById('envasadora');
     const charts = [];   // instancias ECharts, una por valvuladora
+    // Último peso/tope de cada bola: se re-dibuja con ellos al cambiar de
+    // tamaño, para que el número escale con la bola.
+    const ultimo = [];
+
+    // Fila de un LED (botón + etiqueta a la derecha). El id va en .led-item,
+    // que es el que recibe la clase .on.
+    function filaLed(id, color, etiqueta) {
+        return '<div class="led-item" id="' + id + '">' +
+                   '<span class="led led-' + color + '"><span class="led-bulb"></span></span>' +
+                   '<span class="led-label">' + etiqueta + '</span>' +
+               '</div>';
+    }
 
     function crearValvuladora(indice) {
         const card = document.createElement('section');
         card.className = 'valvuladora';
         card.innerHTML =
-            '<div class="valvuladora-titulo">Valvuladora ' + (indice + 1) + '</div>' +
             '<div class="bola"><div class="bola-chart" id="bola-' + indice + '"></div></div>' +
-            // LEDs de estado (solo visuales; su on/off llega del PLC).
-            '<div class="leds">' +
-                '<div class="led-item led-rojo-wrap" id="led-paro-' + indice + '">' +
-                    '<span class="led led-rojo"><span class="led-bulb"></span></span>' +
-                    '<span class="led-label">Paro<br>Emergencia</span>' +
-                '</div>' +
-                '<div class="led-item" id="led-limpieza-' + indice + '">' +
-                    '<span class="led led-amarillo"><span class="led-bulb"></span></span>' +
-                    '<span class="led-label">Limpieza</span>' +
-                '</div>' +
-                '<div class="led-item" id="led-ciclo-' + indice + '">' +
-                    '<span class="led led-verde"><span class="led-bulb"></span></span>' +
-                    '<span class="led-label">Ciclo<br>Envase</span>' +
-                '</div>' +
+            // Contador de bultos de la orden (hasta 4 dígitos).
+            '<div class="contador">' +
+                '<span class="contador-etiqueta">Bultos</span>' +
+                '<span class="contador-num" id="bultos-' + indice + '">0</span>' +
             '</div>' +
-            '<div class="valores">' +
-                '<div class="valor-fila">' +
-                    '<span class="valor-etiqueta">Setpoint</span>' +
-                    '<span class="valor-numero"><span id="setpoint-' + indice + '">—</span>' +
-                        '<span class="unidad">kg</span></span>' +
+            '<div class="inferior">' +
+                // Izquierda: LEDs en vertical (solo visuales, del PLC) + valores.
+                '<div class="panel-estado">' +
+                    filaLed('led-ciclo-' + indice, 'verde', 'Ciclo') +
+                    filaLed('led-limpieza-' + indice, 'amarillo', 'Limpieza') +
+                    filaLed('led-paro-' + indice, 'rojo', 'Paro') +
+                    '<div class="dato">' +
+                        '<span class="dato-num"><span id="setpoint-' + indice + '">—</span><span class="unidad">kg</span></span>' +
+                        '<span class="dato-etiqueta">Setpoint</span>' +
+                    '</div>' +
+                    '<div class="dato">' +
+                        '<span class="dato-num"><span id="columna-' + indice + '">—</span><span class="unidad">kg</span></span>' +
+                        '<span class="dato-etiqueta">Columna</span>' +
+                    '</div>' +
                 '</div>' +
-                '<div class="valor-fila">' +
-                    '<span class="valor-etiqueta">Columna</span>' +
-                    '<span class="valor-numero"><span id="columna-' + indice + '">—</span>' +
-                        '<span class="unidad">kg</span></span>' +
+                // Derecha: últimos bultos envasados.
+                '<div class="panel-tabla">' +
+                    '<table class="tabla-bultos">' +
+                        '<colgroup><col class="c-id"><col class="c-peso"><col class="c-fecha"></colgroup>' +
+                        '<thead><tr><th>ID</th><th>Peso</th><th>Fecha</th></tr></thead>' +
+                        '<tbody id="tabla-' + indice + '"></tbody>' +
+                    '</table>' +
                 '</div>' +
             '</div>';
-        // NOTA: el layout vertical (etiqueta arriba, número grande abajo) lo
-        // controla el CSS de .valor-fila; aquí solo va la estructura.
         contenedor.appendChild(card);
 
         const chart = echarts.init(document.getElementById('bola-' + indice));
-        chart.setOption(opcionesLiquidFill(0, 0));
+        ultimo.push({ peso: 0, tope: 0 });
         charts.push(chart);
+        dibujarBola(indice);
+        pintarTabla(indice, []);
+    }
+
+    // dibujarBola aplica el último peso/tope a la bola i, calculando el tamaño
+    // del número a partir del tamaño real de la bola (así no se sale del
+    // círculo cuando la tarjeta es más chica).
+    function dibujarBola(i) {
+        const c = charts[i];
+        const lado = Math.min(c.getWidth(), c.getHeight()) || 300;
+        c.setOption(opcionesLiquidFill(ultimo[i].peso, ultimo[i].tope, lado));
     }
 
     // Opciones del liquidFill. El 100% de llenado es el PESO_PRODUCTO de la
     // orden (mismo para las 3 bolas): la fracción de agua es peso/pesoProducto
     // (acotada a 0..1). El label muestra el peso directo en kg. Si el tope es 0
     // o no llega, la bola queda vacía (no se divide entre cero).
-    function opcionesLiquidFill(peso, pesoProducto) {
+    // `lado` es el tamaño de la bola en px: el número mide ~1/3 de ese lado.
+    function opcionesLiquidFill(peso, pesoProducto, lado) {
         const tope = pesoProducto > 0 ? pesoProducto : 0;
         const fraccion = tope > 0 ? Math.max(0, Math.min(1, peso / tope)) : 0;
+        const fPeso = Math.max(28, Math.round(lado * 0.33));
+        const fUnidad = Math.max(12, Math.round(fPeso * 0.31));
         return {
             series: [{
                 type: 'liquidFill',
@@ -127,19 +152,13 @@
                 color: ['#b0aca4', '#8f8b83'],
                 backgroundStyle: {
                     color: '#f3efe6',
-                    // Contorno interior naranja.
+                    // Único contorno naranja (el de la bola).
                     borderColor: '#ee8935',
-                    borderWidth: 4
+                    borderWidth: 5
                 },
-                outline: {
-                    show: true,
-                    borderDistance: 4,
-                    itemStyle: {
-                        // Contorno exterior naranja.
-                        borderColor: '#ee8935',
-                        borderWidth: 5
-                    }
-                },
+                // Sin anillo exterior: antes había dos círculos naranjas (el
+                // outline y el borde del fondo). Dejamos solo el del fondo.
+                outline: { show: false },
                 amplitude: 6,
                 waveLength: '80%',
                 label: {
@@ -149,18 +168,20 @@
                         return '{peso|' + Math.round(peso) + '}{unidad|kg}';
                     },
                     rich: {
+                        // Tamaños proporcionales a la bola (ver dibujarBola).
                         peso: {
-                            fontSize: 150,
+                            fontSize: fPeso,
                             fontWeight: 'bold',
                             fontFamily: 'JetBrains Mono, monospace',
                             color: '#161412'
                         },
                         unidad: {
-                            fontSize: 46,
+                            fontSize: fUnidad,
                             fontWeight: 'bold',
                             fontFamily: 'JetBrains Mono, monospace',
                             color: '#161412',
-                            padding: [56, 0, 0, 8]
+                            // Baja el "kg" para alinearlo con la base del número.
+                            padding: [Math.round(fPeso * 0.37), 0, 0, Math.round(fPeso * 0.05)]
                         }
                     },
                     // insideColor aplica al texto que queda sobre el agua.
@@ -176,9 +197,10 @@
         crearValvuladora(i);
     }
 
-    // Redimensiona TODAS las bolas a su contenedor actual.
+    // Redimensiona TODAS las bolas a su contenedor actual y re-dibuja el número
+    // con el tamaño nuevo.
     function ajustarBolas() {
-        charts.forEach(function (c) { c.resize(); });
+        charts.forEach(function (c, i) { c.resize(); dibujarBola(i); });
     }
 
     // --- Arreglo del arranque ---
@@ -193,8 +215,8 @@
     //      no dispara en algún navegador.
     //   3. Un reajuste cuando terminan de cargar las fuentes (cambian métricas).
     if (window.ResizeObserver) {
-        charts.forEach(function (c) {
-            const ro = new ResizeObserver(function () { c.resize(); });
+        charts.forEach(function (c, i) {
+            const ro = new ResizeObserver(function () { c.resize(); dibujarBola(i); });
             ro.observe(c.getDom());
         });
     }
@@ -230,15 +252,25 @@
         document.getElementById('lote-actual').textContent = fmt(estado.lote_actual);
         document.getElementById('lotes-totales').textContent = fmt(estado.lotes_totales);
 
+        // Footer: nombres del personal asignado (del emitter). Si no hay, "—".
+        var trabajadores = estado.trabajadores || [];
+        document.getElementById('footer-trabajadores').textContent =
+            trabajadores.length ? trabajadores.join('  ·  ') : '—';
+
         // --- Valvuladoras ---
         const vals = estado.valvuladoras || [];
         for (let i = 0; i < NUM_VALVULADORAS; i++) {
             const v = vals[i] || { peso: 0, setpoint: null, columna: null };
             // El llenado usa el peso_producto de la orden como 100% (igual para
             // las 3 bolas). El setpoint solo se muestra abajo.
-            charts[i].setOption(opcionesLiquidFill(v.peso || 0, estado.peso_producto || 0));
+            ultimo[i] = { peso: v.peso || 0, tope: estado.peso_producto || 0 };
+            dibujarBola(i);
             document.getElementById('setpoint-' + i).textContent = fmt(v.setpoint);
             document.getElementById('columna-' + i).textContent = fmt(v.columna);
+
+            // Contador de bultos de la orden y tabla de los últimos bultos.
+            document.getElementById('bultos-' + i).textContent = v.bultos || 0;
+            pintarTabla(i, v.registros || []);
 
             // LEDs: on/off del PLC. Se leen de la valvuladora (v.leds) y, si no
             // vienen ahí, del nivel de la envasadora (estado.leds), para que
@@ -254,6 +286,65 @@
     function marcarLed(id, encendido) {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('on', !!encendido);
+    }
+
+    // ============================================================
+    //  Tabla de bultos (ID / Peso / Fecha), del más nuevo al más viejo.
+    //  Se arma con textContent (nunca innerHTML con datos externos). Las filas
+    //  que no caben quedan ocultas por el overflow del panel.
+    // ============================================================
+    function dosDigitos(n) { return (n < 10 ? '0' : '') + n; }
+
+    // "2026-09-30T11:27:32-06:00" -> día "30/09" + hora "11:27:32".
+    // Si la fecha no se puede interpretar, se muestra tal cual llegó.
+    function partirFecha(texto) {
+        const d = new Date(texto);
+        if (!texto || isNaN(d.getTime())) return { dia: '', hora: texto || '—' };
+        return {
+            dia: dosDigitos(d.getDate()) + '/' + dosDigitos(d.getMonth() + 1),
+            hora: dosDigitos(d.getHours()) + ':' + dosDigitos(d.getMinutes()) + ':' + dosDigitos(d.getSeconds())
+        };
+    }
+
+    function celda(tr, texto, extraClase, extraTexto) {
+        const td = document.createElement('td');
+        if (extraClase) {
+            const s = document.createElement('span');
+            s.className = extraClase;
+            s.textContent = extraTexto;
+            // La fecha lleva el día atenuado antes de la hora; el peso lleva la
+            // unidad atenuada después del número.
+            if (extraClase === 'fecha-dia') { td.appendChild(s); td.appendChild(document.createTextNode(texto)); }
+            else { td.appendChild(document.createTextNode(texto)); td.appendChild(s); }
+        } else {
+            td.textContent = texto;
+        }
+        tr.appendChild(td);
+    }
+
+    function pintarTabla(i, registros) {
+        const tbody = document.getElementById('tabla-' + i);
+        if (!tbody) return;
+        const filas = document.createDocumentFragment();
+        if (!registros.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 3;
+            td.className = 'vacio';
+            td.textContent = 'Sin bultos registrados';
+            tr.appendChild(td);
+            filas.appendChild(tr);
+        }
+        registros.forEach(function (r) {
+            const tr = document.createElement('tr');
+            const peso = (typeof r.peso === 'number') ? r.peso.toFixed(2) : String(r.peso == null ? '—' : r.peso);
+            const f = partirFecha(r.fecha);
+            celda(tr, String(r.id == null || r.id === '' ? '—' : r.id));
+            celda(tr, peso, 'unidad', 'kg');
+            celda(tr, f.hora, f.dia ? 'fecha-dia' : '', f.dia);
+            filas.appendChild(tr);
+        });
+        tbody.replaceChildren(filas);
     }
 
     // ============================================================
