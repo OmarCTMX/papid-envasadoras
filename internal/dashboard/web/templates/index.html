@@ -44,10 +44,8 @@
             </span>
         </div>
 
-        <!-- Centro: trabajadores asignados (fijos por ahora). -->
-        <span class="footer-trabajadores" id="footer-trabajadores">
-            Omar Ramirez &nbsp;·&nbsp; Michel Davalos
-        </span>
+        <!-- Centro: trabajadores asignados (del emitter, por SSE). -->
+        <span class="footer-trabajadores" id="footer-trabajadores">—</span>
 
         <!-- Derecha: reloj -->
         <span class="estado-reloj" id="estado-reloj">--:--:--</span>
@@ -253,6 +251,11 @@
         document.getElementById('item-name').textContent = estado.item_name || '';
         document.getElementById('lote-actual').textContent = fmt(estado.lote_actual);
         document.getElementById('lotes-totales').textContent = fmt(estado.lotes_totales);
+
+        // Footer: nombres del personal asignado (del emitter). Si no hay, "—".
+        var trabajadores = estado.trabajadores || [];
+        document.getElementById('footer-trabajadores').textContent =
+            trabajadores.length ? trabajadores.join('  ·  ') : '—';
 
         // --- Valvuladoras ---
         const vals = estado.valvuladoras || [];

@@ -75,8 +75,13 @@ func main() {
 		log.Printf("[dashboard] No se pudo conectar a NATS: %v (el dashboard sigue funcionando)", err)
 	} else {
 		nc = conn
+		// Datos de proceso (del distribuidor): peso, setpoint, leds, bultos...
 		if _, err := natsclient.Suscribir(nc, cfgNats, st); err != nil {
 			log.Printf("[dashboard] No se pudo suscribir a NATS: %v", err)
+		}
+		// Personal (del emitter): nombres asignados para el footer.
+		if _, err := natsclient.SuscribirEmitter(nc, cfgNats, st); err != nil {
+			log.Printf("[dashboard] No se pudo suscribir al emitter: %v", err)
 		}
 	}
 

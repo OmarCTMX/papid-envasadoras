@@ -121,6 +121,10 @@ type Estado struct {
 	// repetidas debajo de cada bola. Si las valvuladoras traen su propio Leds,
 	// ese tiene prioridad.
 	Leds *Leds `json:"leds,omitempty"`
+	// Trabajadores son los nombres del personal asignado a esta envasadora
+	// (del emitter, subject papid.emitter.<code>). Se muestran en el footer.
+	// No vienen del PLC: los llena el dashboard al escuchar al emitter.
+	Trabajadores []string `json:"trabajadores,omitempty"`
 }
 
 // EstadoVacio devuelve un estado inicial sin datos: tres valvuladoras en cero.

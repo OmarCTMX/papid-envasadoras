@@ -1,0 +1,45 @@
+# Dashboard de Envasadoras — solo el frontend (la pantalla de las bolas).
+#
+# Levantar:
+#   docker compose up -d --build
+#
+# Las variables (MACHINE_CODE, NATS_URL, etc.) se leen del .env que está en la
+# misma carpeta. Para cambiar de envasadora basta editar MACHINE_CODE en el
+# .env y hacer un docker compose up -d (sin --build, es la misma imagen).
+#
+# Si necesitas correr VARIAS envasadoras en la misma máquina (ej. pruebas),
+# duplica el servicio con distintos puertos y variables:
+#
+#   dashboard-2:
+#     <<: *dashboard
+#     container_name: papid-envasadora-2
+#     environment:
+#       MACHINE_CODE: envasadora-2
+#       MAQUINA: Envasadora-2
+#     ports:
+#       - "3001:3000"
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dashboard-envasadoras:latest
+    container_name: papid-envasadora-${MACHINE_CODE:-envasadora-1}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: America/Mexico_City
+      PORT: "3000"
+      REGION: ${REGION:-Cotija}
+      MACHINE_CODE: ${MACHINE_CODE:-silo-1}
+      MAQUINA: ${MAQUINA:-Silo 1}
+      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
+      NATS_USER: ${NATS_USER:-papid}
+      NATS_PASS: ${NATS_PASS:-papid2024}
+
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
