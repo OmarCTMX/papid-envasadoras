@@ -12,8 +12,9 @@ import (
 	"strings"
 )
 
-// TotalValvuladoras es la cantidad fija de valvuladoras por envasadora.
-const TotalValvuladoras = 3
+// DefaultEnvasadoras es la cantidad de envasadoras (bolas) por defecto si no se
+// configura. Cada dashboard lo sobreescribe con NUM_ENVASADORAS del .env.
+const DefaultEnvasadoras = 3
 
 // MaxRegistros es el máximo de bultos que se guardan por valvuladora para la
 // tabla (ID / Peso / Fecha). La pantalla solo muestra los que caben; el tope
@@ -130,9 +131,12 @@ type Estado struct {
 // EstadoVacio devuelve un estado inicial sin datos: tres valvuladoras en cero.
 // Es lo que ve el navegador antes de que llegue el primer mensaje de NATS, para
 // que la UI no arranque en blanco ni con menos de tres bolas.
-func EstadoVacio() Estado {
-	e := Estado{Valvuladoras: make([]Valvuladora, TotalValvuladoras)}
-	e.Normalizar() // registros como arreglo vacío, no null
+func EstadoVacio(numEnvasadoras int) Estado {
+	if numEnvasadoras <= 0 {
+		numEnvasadoras = DefaultEnvasadoras
+	}
+	e := Estado{Valvuladoras: make([]Valvuladora, numEnvasadoras)}
+	e.Normalizar(numEnvasadoras)
 	return e
 }
 
@@ -141,16 +145,19 @@ func EstadoVacio() Estado {
 // acota por arriba: el 100% de la bola es el setpoint, así que un peso mayor
 // al setpoint simplemente llena la bola al máximo (lo maneja el frontend).
 // Un mensaje mal formado (más o menos valvuladoras) no debe romper la UI.
-func (e *Estado) Normalizar() {
+func (e *Estado) Normalizar(numEnvasadoras int) {
+	if numEnvasadoras <= 0 {
+		numEnvasadoras = DefaultEnvasadoras
+	}
 	if e.Valvuladoras == nil {
-		e.Valvuladoras = make([]Valvuladora, 0, TotalValvuladoras)
+		e.Valvuladoras = make([]Valvuladora, 0, numEnvasadoras)
 	}
 	// Recorta si vienen de más.
-	if len(e.Valvuladoras) > TotalValvuladoras {
-		e.Valvuladoras = e.Valvuladoras[:TotalValvuladoras]
+	if len(e.Valvuladoras) > numEnvasadoras {
+		e.Valvuladoras = e.Valvuladoras[:numEnvasadoras]
 	}
 	// Rellena si vienen de menos.
-	for len(e.Valvuladoras) < TotalValvuladoras {
+	for len(e.Valvuladoras) < numEnvasadoras {
 		e.Valvuladoras = append(e.Valvuladoras, Valvuladora{})
 	}
 	for i := range e.Valvuladoras {

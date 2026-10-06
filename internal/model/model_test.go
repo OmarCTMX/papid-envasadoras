@@ -6,12 +6,12 @@ import (
 )
 
 // TestNormalizarRellena verifica que un estado con menos de 3 valvuladoras se
-// rellene hasta TotalValvuladoras.
+// rellene hasta 3.
 func TestNormalizarRellena(t *testing.T) {
 	e := Estado{Valvuladoras: []Valvuladora{{Peso: 50}}}
-	e.Normalizar()
-	if len(e.Valvuladoras) != TotalValvuladoras {
-		t.Fatalf("esperaba %d valvuladoras, obtuve %d", TotalValvuladoras, len(e.Valvuladoras))
+	e.Normalizar(3)
+	if len(e.Valvuladoras) != 3 {
+		t.Fatalf("esperaba %d valvuladoras, obtuve %d", 3, len(e.Valvuladoras))
 	}
 	if e.Valvuladoras[0].Peso != 50 {
 		t.Errorf("la primera valvuladora debía conservar peso 50, obtuve %v", e.Valvuladoras[0].Peso)
@@ -19,12 +19,12 @@ func TestNormalizarRellena(t *testing.T) {
 }
 
 // TestNormalizarRecorta verifica que un estado con más de 3 valvuladoras se
-// recorte a TotalValvuladoras.
+// recorte a 3.
 func TestNormalizarRecorta(t *testing.T) {
 	e := Estado{Valvuladoras: make([]Valvuladora, 5)}
-	e.Normalizar()
-	if len(e.Valvuladoras) != TotalValvuladoras {
-		t.Fatalf("esperaba %d valvuladoras, obtuve %d", TotalValvuladoras, len(e.Valvuladoras))
+	e.Normalizar(3)
+	if len(e.Valvuladoras) != 3 {
+		t.Fatalf("esperaba %d valvuladoras, obtuve %d", 3, len(e.Valvuladoras))
 	}
 }
 
@@ -33,7 +33,7 @@ func TestNormalizarRecorta(t *testing.T) {
 // peso/setpoint).
 func TestNormalizarPeso(t *testing.T) {
 	e := Estado{Valvuladoras: []Valvuladora{{Peso: 150, Setpoint: 20}, {Peso: -20}, {Peso: 75}}}
-	e.Normalizar()
+	e.Normalizar(3)
 	if e.Valvuladoras[0].Peso != 150 {
 		t.Errorf("peso 150 debía conservarse (sin tope), obtuve %v", e.Valvuladoras[0].Peso)
 	}
@@ -95,7 +95,7 @@ func TestNormalizarRegistros(t *testing.T) {
 		regs[i].ID = FlexString(string(rune('a' + i%26)))
 	}
 	e := Estado{Valvuladoras: []Valvuladora{{Registros: regs, Bultos: -3}}}
-	e.Normalizar()
+	e.Normalizar(3)
 	if len(e.Valvuladoras[0].Registros) != MaxRegistros {
 		t.Errorf("esperaba %d registros, obtuve %d", MaxRegistros, len(e.Valvuladoras[0].Registros))
 	}

@@ -13,17 +13,19 @@ import (
 
 // Store guarda el estado y avisa cuando cambia.
 type Store struct {
-	mu          sync.RWMutex
-	machineCode string
-	estado      model.Estado
-	onChange    func()
+	mu             sync.RWMutex
+	machineCode    string
+	numEnvasadoras int
+	estado         model.Estado
+	onChange       func()
 }
 
-// New crea un store con el estado inicial vacío (tres valvuladoras en cero).
-func New(machineCode string) *Store {
+// New crea un store con el estado inicial vacío (N envasadoras en cero).
+func New(machineCode string, numEnvasadoras int) *Store {
 	return &Store{
-		machineCode: machineCode,
-		estado:      model.EstadoVacio(),
+		machineCode:    machineCode,
+		numEnvasadoras: numEnvasadoras,
+		estado:         model.EstadoVacio(numEnvasadoras),
 	}
 }
 
@@ -45,7 +47,7 @@ func (s *Store) MachineCode() string {
 // blob del PLC no borra la orden. El estado se normaliza para tener siempre
 // tres valvuladoras.
 func (s *Store) Aplicar(estado model.Estado) {
-	estado.Normalizar()
+	estado.Normalizar(s.numEnvasadoras)
 
 	s.mu.Lock()
 	// La orden y el personal son del signed: se conservan, no los pisa el PLC.

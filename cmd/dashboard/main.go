@@ -26,6 +26,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
 
+	"papid-envasadoras/internal/model"
 	"papid-envasadoras/internal/natsclient"
 	"papid-envasadoras/internal/render"
 	"papid-envasadoras/internal/sse"
@@ -42,8 +43,18 @@ func main() {
 	port := getenv("PORT", "3000")
 	machineCode := os.Getenv("MACHINE_CODE")
 
+	// Número de envasadoras (bolas) del silo. Configurable por silo:
+	//   NUM_ENVASADORAS=2  → silo 1 y 4
+	//   NUM_ENVASADORAS=3  → silo 2 y 3 (o default)
+	numEnvasadoras := model.DefaultEnvasadoras
+	if v := os.Getenv("NUM_ENVASADORAS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			numEnvasadoras = n
+		}
+	}
+
 	// --- Componentes ---
-	st := store.New(machineCode)
+	st := store.New(machineCode, numEnvasadoras)
 	broker := sse.New()
 
 	renderer, err := render.New("internal/dashboard/web/templates")
@@ -90,11 +101,10 @@ func main() {
 
 	titulo := construirTitulo()
 	datosIndex := render.DatosIndex{
-		Titulo:  titulo,
-		Maquina: getenv("MAQUINA", machineCode),
-		// Versión = hora de arranque. Cambia en cada reinicio del servidor, así
-		// el navegador vuelve a pedir el CSS y no se queda con uno cacheado.
-		Version: strconv.FormatInt(time.Now().Unix(), 10),
+		Titulo:         titulo,
+		Maquina:        getenv("MAQUINA", machineCode),
+		Version:        strconv.FormatInt(time.Now().Unix(), 10),
+		NumEnvasadoras: numEnvasadoras,
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
