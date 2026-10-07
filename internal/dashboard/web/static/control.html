@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de órdenes · Envasadora</title>
+    <style>
+        :root {
+            --bg: #f3efe6; --blanco: #e1ddd5; --ink: #161412; --muted: #7a736a;
+            --accent: #ee8935; --ok: #4caf50; --err: #f44336; --linea: #b9b8b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg); color: var(--ink);
+            font-family: "JetBrains Mono", ui-monospace, monospace;
+            padding: 20px; line-height: 1.4;
+        }
+        h1 { font-size: 1.3rem; margin-bottom: 4px; }
+        .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+        .card {
+            background: var(--blanco); border: 2px solid var(--ink);
+            border-radius: 8px; box-shadow: 4px 4px 0 var(--ink); padding: 14px;
+        }
+        .card h2 {
+            font-size: 1rem; text-transform: uppercase; letter-spacing: 1px;
+            display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+        }
+        .fuente { font-size: 0.72rem; color: var(--muted); margin-bottom: 10px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot.on { background: var(--ok); } .dot.off { background: var(--err); }
+        .campo { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--linea); }
+        .campo .k { color: var(--muted); }
+        .campo .v { font-weight: 700; text-align: right; word-break: break-word; }
+        .vacio { color: var(--muted); font-style: italic; padding: 10px 0; }
+        .personal { margin-top: 8px; }
+        .personal .p { padding: 2px 0; }
+        .personal .rol { color: var(--muted); font-size: 0.8em; }
+        .acciones { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+        button {
+            font-family: inherit; font-weight: 700; font-size: 0.8rem;
+            text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+            padding: 8px 12px; border: 2px solid var(--ink); border-radius: 6px;
+            background: var(--bg); color: var(--ink);
+        }
+        button.danger { background: var(--err); color: #fff; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .barra { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+        .msg { font-size: 0.85rem; min-height: 1.2em; }
+        .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+        a.docs { color: var(--accent); font-size: 0.8rem; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>Control de órdenes</h1>
+    <div class="sub">
+        Silo: <b id="machine-code">—</b> ·
+        <a class="docs" href="/docs">ver /docs</a> ·
+        <a class="docs" href="/">ver pantalla</a>
+    </div>
+
+    <div class="cols">
+        <!-- Arriba/izquierda: la orden del EMITTER (NATS, del signed) -->
+        <section class="card">
+            <h2><span id="dot-emitter" class="dot off"></span> Orden del emitter</h2>
+            <div class="fuente">Fuente: NATS · papid.admin.signed → KV del emitter</div>
+            <div id="emitter-body"><div class="vacio">Cargando…</div></div>
+            <div class="acciones">
+                <button id="btn-del-emitter" class="danger">Quitar orden del emitter (unsigned)</button>
+            </div>
+        </section>
+
+        <!-- Abajo/derecha: la orden de la API (POST) -->
+        <section class="card">
+            <h2><span id="dot-api" class="dot off"></span> Orden de la API</h2>
+            <div class="fuente">Fuente: POST /api/orden (admin)</div>
+            <div id="api-body"><div class="vacio">Cargando…</div></div>
+            <div class="acciones">
+                <button id="btn-del-api" class="danger">Quitar orden de la API</button>
+            </div>
+        </section>
+    </div>
+
+    <div class="barra">
+        <button id="btn-refrescar">Refrescar</button>
+        <span id="msg" class="msg"></span>
+    </div>
+
+    <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s);
+
+    function campo(k, v) {
+        return '<div class="campo"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>';
+    }
+
+    function pintarPersonal(lista) {
+        if (!lista || !lista.length) return '';
+        let h = '<div class="personal"><div class="campo"><span class="k">Personal</span><span class="v">' + lista.length + '</span></div>';
+        lista.forEach(p => {
+            const nombre = p.nombre || p.name || '—';
+            const rol = p.rol || p.tipo_asignacion || '';
+            h += '<div class="p">· ' + esc(nombre) + (rol ? ' <span class="rol">(' + esc(rol) + ')</span>' : '') + '</div>';
+        });
+        return h + '</div>';
+    }
+
+    function pintarApi(api) {
+        const o = api.orden;
+        if (!o) { $('api-body').innerHTML = '<div class="vacio">Sin orden en la API</div>'; $('dot-api').className = 'dot off'; $('btn-del-api').disabled = true; return; }
+        $('dot-api').className = 'dot on';
+        $('btn-del-api').disabled = false;
+        const a = api.avance || {};
+        let h = '';
+        h += campo('OF (docNum)', o.doc_num);
+        h += campo('Item', o.item_name);
+        h += campo('Peso producto', o.peso_producto + ' kg');
+        h += campo('Lotes', a.lotes_completados + ' / ' + a.lotes_totales + (a.orden_terminada ? ' (terminada)' : ''));
+        h += campo('Bultos de la orden', a.bultos_orden);
+        h += campo('Bultos por lote', a.bultos_por_lote);
+        h += campo('Máquina', o.maquina);
+        h += pintarPersonal(api.personal);
+        $('api-body').innerHTML = h;
+    }
+
+    function pintarEmitter(em) {
+        if (!em.disponible) { $('emitter-body').innerHTML = '<div class="vacio">Emitter no accesible (sin NATS o su KV)</div>'; $('dot-emitter').className = 'dot off'; $('btn-del-emitter').disabled = true; return; }
+        const o = em.orden;
+        if (!o) { $('emitter-body').innerHTML = '<div class="vacio">Sin orden en el emitter</div>'; $('dot-emitter').className = 'dot off'; $('btn-del-emitter').disabled = true; return; }
+        $('dot-emitter').className = 'dot on';
+        $('btn-del-emitter').disabled = false;
+        const od = o.order_details || {};
+        let h = '';
+        h += campo('OF (doc_num)', od.doc_num);
+        h += campo('Producto', od.product_name);
+        h += campo('Lotes', (od.lotes_actuales || '0') + ' / ' + (od.lotes_totales || '0'));
+        h += campo('Máquina', o.machine_name || o.machine_code);
+        h += campo('Activa', o.is_active ? 'sí' : 'no');
+        h += pintarPersonal(o.personal);
+        $('emitter-body').innerHTML = h;
+    }
+
+    async function cargar() {
+        try {
+            const r = await fetch('/api/control');
+            const d = await r.json();
+            $('machine-code').textContent = d.machine_code || '—';
+            pintarEmitter(d.emitter || { disponible: false });
+            pintarApi(d.api || {});
+            mensaje('', '');
+        } catch (e) {
+            mensaje('No se pudo cargar: ' + e, 'err');
+        }
+    }
+
+    function mensaje(txt, tipo) {
+        const el = $('msg'); el.textContent = txt; el.className = 'msg' + (tipo ? ' ' + tipo : '');
+    }
+
+    async function borrar(url, descripcion) {
+        if (!confirm('¿' + descripcion + '?')) return;
+        try {
+            const r = await fetch(url, { method: 'DELETE' });
+            const d = await r.json();
+            mensaje((d.ok ? 'OK: ' : 'Error: ') + (d.mensaje || r.status), d.ok ? 'ok' : 'err');
+            cargar();
+        } catch (e) {
+            mensaje('Error: ' + e, 'err');
+        }
+    }
+
+    $('btn-del-api').onclick = () => borrar('/api/orden', 'Quitar la orden de la API');
+    $('btn-del-emitter').onclick = () => borrar('/api/orden/emitter', 'Pedir al emitter que quite la orden (unsigned)');
+    $('btn-refrescar').onclick = cargar;
+
+    cargar();
+    setInterval(cargar, 3000); // se refresca solo cada 3s
+    </script>
+</body>
+</html>

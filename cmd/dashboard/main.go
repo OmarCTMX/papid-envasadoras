@@ -106,6 +106,9 @@ func main() {
 	}()
 	st.SetOnGuardar(encolar)
 
+	// emitterKV lee (sin escribir) el KV del emitter, para la vista /control.
+	var emitterKV atomic.Pointer[persistence.EmitterKV]
+
 	// Al conectar (la primera vez): abrir el KV y restaurar lo guardado.
 	alConectar := func(c *nats.Conn) {
 		kv, err := persistence.New(c)
@@ -114,6 +117,14 @@ func main() {
 			return
 		}
 		kvActual.Store(kv)
+
+		// Lector del KV del emitter (puede no existir aún; no es fatal).
+		if ekv, err := persistence.NewEmitter(c); err != nil {
+			log.Printf("[kv] No se pudo abrir el KV del emitter: %v", err)
+		} else if ekv != nil {
+			emitterKV.Store(ekv)
+		}
+
 		snap, err := kv.Cargar(machineCode)
 		switch {
 		case err != nil:
@@ -160,7 +171,8 @@ func main() {
 	if strings.TrimSpace(token) == "" {
 		log.Println("[dashboard] AVISO: API_TOKEN vacío, POST/DELETE /api/orden quedan SIN autenticación")
 	}
-	api.New(st, token).Registrar(mux)
+	ctrl := &controlEmitter{nc: nc, code: machineCode, emitterKV: &emitterKV}
+	api.New(st, token, ctrl).Registrar(mux)
 
 	datosIndex := render.DatosIndex{
 		Titulo:         construirTitulo(),
@@ -274,4 +286,41 @@ func getenv(clave, def string) string {
 		return v
 	}
 	return def
+}
+
+// controlEmitter implementa api.Control: lee la orden del emitter desde su KV
+// y le publica el unsigned para quitarla. Es el puente entre el dashboard y el
+// emitter para la vista /control.
+type controlEmitter struct {
+	nc        *nats.Conn
+	code      string
+	emitterKV *atomic.Pointer[persistence.EmitterKV]
+}
+
+// OrdenEmitter devuelve la orden del emitter de este silo. El segundo valor es
+// false si el emitter no está accesible (sin NATS o sin su bucket).
+func (c *controlEmitter) OrdenEmitter() (any, bool) {
+	kv := c.emitterKV.Load()
+	if kv == nil {
+		return nil, false
+	}
+	o, err := kv.Cargar(c.code)
+	if err != nil {
+		log.Printf("[control] Error leyendo la orden del emitter: %v", err)
+		return nil, true // el KV existe, pero esta máquina no tiene orden/dio error
+	}
+	return o, true // o puede ser nil (sin orden), pero el emitter sí responde
+}
+
+// QuitarOrdenEmitter publica papid.admin.unsigned para que el emitter borre la
+// orden y el personal de este silo (igual que en las a2i).
+func (c *controlEmitter) QuitarOrdenEmitter() error {
+	if c.nc == nil {
+		return os.ErrClosed
+	}
+	payload := []byte(`{"machine_code":"` + c.code + `","personnel":[]}`)
+	if err := c.nc.Publish("papid.admin.unsigned", payload); err != nil {
+		return err
+	}
+	return c.nc.FlushTimeout(3 * time.Second)
 }

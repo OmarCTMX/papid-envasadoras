@@ -30,15 +30,27 @@ const maxCuerpo = 1 << 20 // 1 MB
 // maxPersonal acota cuántas personas se aceptan por orden.
 const maxPersonal = 20
 
+// Control son las operaciones que la API necesita sobre el emitter (leer su
+// orden y pedirle que la quite). Lo implementa main.go con NATS; puede ser nil
+// (sin NATS), en cuyo caso la vista /control solo muestra la orden de la API.
+type Control interface {
+	// OrdenEmitter devuelve la orden del emitter para este silo (como JSON
+	// genérico) o nil si no hay. El bool indica si el emitter está accesible.
+	OrdenEmitter() (any, bool)
+	// QuitarOrdenEmitter publica el unsigned al emitter para este silo.
+	QuitarOrdenEmitter() error
+}
+
 // API agrupa las dependencias de los handlers.
 type API struct {
 	st    *store.Store
 	token string
+	ctrl  Control
 }
 
-// New crea la API. token vacío = sin autenticación.
-func New(st *store.Store, token string) *API {
-	return &API{st: st, token: strings.TrimSpace(token)}
+// New crea la API. token vacío = sin autenticación. ctrl puede ser nil.
+func New(st *store.Store, token string, ctrl Control) *API {
+	return &API{st: st, token: strings.TrimSpace(token), ctrl: ctrl}
 }
 
 // Registrar monta las rutas en el mux.
@@ -46,8 +58,11 @@ func (a *API) Registrar(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/orden", a.autenticado(a.postOrden))
 	mux.HandleFunc("GET /api/orden", a.getOrden)
 	mux.HandleFunc("DELETE /api/orden", a.autenticado(a.deleteOrden))
+	mux.HandleFunc("DELETE /api/orden/emitter", a.autenticado(a.deleteOrdenEmitter))
 	mux.HandleFunc("GET /api/estado", a.getEstado)
+	mux.HandleFunc("GET /api/control", a.getControl)
 	mux.HandleFunc("GET /api/openapi.json", a.openapi)
+	mux.HandleFunc("GET /control", a.controlPagina)
 	mux.HandleFunc("GET /docs", a.docs)
 }
 
@@ -177,6 +192,64 @@ func (a *API) deleteOrden(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) getEstado(w http.ResponseWriter, r *http.Request) {
 	escribirJSON(w, http.StatusOK, a.st.Estado())
+}
+
+// getControl devuelve las DOS órdenes de este silo: la del emitter (NATS, del
+// signed) y la de la API (POST). Sirve para comparar y tener control.
+func (a *API) getControl(w http.ResponseWriter, r *http.Request) {
+	orden, personal := a.st.Orden()
+	e := a.st.Estado()
+
+	res := map[string]any{
+		"machine_code": a.st.MachineCode(),
+		"api": map[string]any{
+			"orden":    orden, // null si no hay
+			"personal": personal,
+			"avance": map[string]any{
+				"bultos_orden":      e.BultosOrden,
+				"bultos_por_lote":   e.BultosPorLote,
+				"lotes_completados": e.LoteActual,
+				"lotes_totales":     e.LotesTotales,
+				"orden_terminada":   e.OrdenTerminada,
+			},
+		},
+	}
+
+	// Orden del emitter (si NATS está disponible).
+	if a.ctrl != nil {
+		if oe, ok := a.ctrl.OrdenEmitter(); ok {
+			res["emitter"] = map[string]any{"disponible": true, "orden": oe}
+		} else {
+			res["emitter"] = map[string]any{"disponible": false, "orden": nil}
+		}
+	} else {
+		res["emitter"] = map[string]any{"disponible": false, "orden": nil}
+	}
+	escribirJSON(w, http.StatusOK, res)
+}
+
+// deleteOrdenEmitter le pide al emitter que quite la orden/personal de este
+// silo (publica el unsigned a NATS). No toca la orden de la API.
+func (a *API) deleteOrdenEmitter(w http.ResponseWriter, r *http.Request) {
+	if a.ctrl == nil {
+		apiError(w, http.StatusServiceUnavailable, "sin conexión a NATS: no se puede avisar al emitter")
+		return
+	}
+	if err := a.ctrl.QuitarOrdenEmitter(); err != nil {
+		apiError(w, http.StatusBadGateway, "no se pudo avisar al emitter: "+err.Error())
+		return
+	}
+	log.Printf("[api] unsigned enviado al emitter para %s", a.st.MachineCode())
+	escribirJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "mensaje": "Se pidió al emitter quitar la orden (unsigned)",
+	})
+}
+
+// controlPagina sirve la página /control (comparación de ambas órdenes).
+func (a *API) controlPagina(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	http.ServeFile(w, r, "internal/dashboard/web/static/control.html")
 }
 
 // respuestaOrden arma la respuesta de /api/orden: la orden, el personal y el

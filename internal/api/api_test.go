@@ -24,7 +24,7 @@ const ordenAdmin = `{
 func servidor(token string) (*httptest.Server, *store.Store) {
 	st := store.New("B2-A-silo-1", 2)
 	mux := http.NewServeMux()
-	New(st, token).Registrar(mux)
+	New(st, token, nil).Registrar(mux)
 	return httptest.NewServer(mux), st
 }
 
@@ -136,5 +136,47 @@ func TestGetYDeleteOrden(t *testing.T) {
 	res.Body.Close()
 	if st.TieneOrden() {
 		t.Fatal("tras DELETE no debía haber orden")
+	}
+}
+
+func TestGetControl(t *testing.T) {
+	srv, _ := servidor("")
+	defer srv.Close()
+	post(t, srv.URL, ordenAdmin, "")
+
+	res, err := http.Get(srv.URL + "/api/control")
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/control falló: %v %v", err, res)
+	}
+	var out map[string]any
+	json.NewDecoder(res.Body).Decode(&out)
+	res.Body.Close()
+
+	if out["machine_code"] != "B2-A-silo-1" {
+		t.Errorf("machine_code mal: %v", out["machine_code"])
+	}
+	// Sin Control (nil), el emitter no está disponible.
+	em, _ := out["emitter"].(map[string]any)
+	if em == nil || em["disponible"] != false {
+		t.Errorf("emitter debía venir no disponible: %v", em)
+	}
+	// La orden de la API sí está (se cargó por POST).
+	api, _ := out["api"].(map[string]any)
+	if api == nil || api["orden"] == nil {
+		t.Errorf("la orden de la API debía estar presente: %v", api)
+	}
+}
+
+func TestDeleteOrdenEmitterSinControl(t *testing.T) {
+	srv, _ := servidor("") // ctrl = nil
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/orden/emitter", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE falló: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("sin NATS debía dar 503, obtuve %d", res.StatusCode)
 	}
 }

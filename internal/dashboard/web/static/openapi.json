@@ -119,6 +119,25 @@
         }
       }
     },
+    "/api/orden/emitter": {
+      "delete": {
+        "summary": "Pedir al emitter que quite la orden (unsigned)",
+        "description": "Publica papid.admin.unsigned a NATS para que el emitter borre la orden y el personal de ESTE silo. No toca la orden de la API (la del POST). Útil desde /control para dejar ambos lados sincronizados.",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "Unsigned enviado al emitter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Token inválido o ausente" },
+          "503": { "description": "Sin conexión a NATS" }
+        }
+      }
+    },
+    "/api/control": {
+      "get": {
+        "summary": "Comparar la orden del emitter (NATS) y la de la API (POST)",
+        "description": "Devuelve las DOS órdenes de este silo para tener control: la del emitter (papid.admin.signed, leída de su KV) y la de la API (POST /api/orden), con el avance de bultos/lotes. Lo usa la página /control.",
+        "responses": { "200": { "description": "Ambas órdenes" } }
+      }
+    },
     "/api/estado": {
       "get": {
         "summary": "Estado completo de la pantalla",

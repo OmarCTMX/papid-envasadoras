@@ -57,6 +57,66 @@ func (k *KV) Guardar(code string, snap model.Snapshot) error {
 	return err
 }
 
+// --- Lectura del KV del EMITTER (solo lectura) ---
+//
+// El emitter guarda su orden/personal (la del signed) en otro bucket. El
+// dashboard lo lee para la vista /control, donde se comparan la orden del
+// emitter (NATS) y la de la API (POST). Si el bucket no existe (el emitter no
+// ha corrido), simplemente no hay orden del emitter.
+
+const bucketEmitter = "papid_personal_asignado"
+
+// OrdenEmitter es lo mínimo que el dashboard muestra de la orden del emitter.
+type OrdenEmitter struct {
+	MachineCode  string           `json:"machine_code"`
+	MachineName  string           `json:"machine_name"`
+	IsActive     bool             `json:"is_active"`
+	OrderDetails map[string]any   `json:"order_details"`
+	Personal     []map[string]any `json:"personal"`
+	Actualizado  string           `json:"actualizado"`
+}
+
+// EmitterKV lee (sin escribir) el bucket del emitter.
+type EmitterKV struct {
+	kv nats.KeyValue
+}
+
+// NewEmitter abre el bucket del emitter en modo lectura. Devuelve (nil, nil) si
+// el bucket aún no existe: el dashboard funciona igual, solo sin esa columna.
+func NewEmitter(nc *nats.Conn) (*EmitterKV, error) {
+	js, err := nc.JetStream()
+	if err != nil {
+		return nil, fmt.Errorf("jetstream: %w", err)
+	}
+	kv, err := js.KeyValue(bucketEmitter)
+	if errors.Is(err, nats.ErrBucketNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("bucket %q: %w", bucketEmitter, err)
+	}
+	return &EmitterKV{kv: kv}, nil
+}
+
+// Cargar lee la orden/personal del emitter para un silo. nil = sin dato.
+func (e *EmitterKV) Cargar(code string) (*OrdenEmitter, error) {
+	if e == nil {
+		return nil, nil
+	}
+	entry, err := e.kv.Get(code)
+	if err != nil {
+		if errors.Is(err, nats.ErrKeyNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var o OrdenEmitter
+	if err := json.Unmarshal(entry.Value(), &o); err != nil {
+		return nil, fmt.Errorf("valor del emitter inválido en %q: %w", code, err)
+	}
+	return &o, nil
+}
+
 // Cargar lee el snapshot del silo. Devuelve nil si no hay nada guardado.
 func (k *KV) Cargar(code string) (*model.Snapshot, error) {
 	entry, err := k.kv.Get(code)
