@@ -26,8 +26,12 @@ type Valvuladora struct {
 	Setpoint  float64    `json:"setpoint"`
 	Columna   float64    `json:"columna"`
 	Leds      *Leds      `json:"leds,omitempty"`
-	Bultos    int        `json:"bultos"`
+	Bultos    int        `json:"bultos"` // contador de bultos del PLC
 	Registros []Registro `json:"registros,omitempty"`
+	// Datos del último bulto completado (opcionales, del PLC). Se reenvían tal
+	// cual; IDBulto es any para aceptar texto o número sin perderlo.
+	IDBulto   any     `json:"id_bulto,omitempty"`
+	PesoBulto float64 `json:"peso_bulto,omitempty"`
 }
 
 // Envasadora es el estado COMPLETO de una envasadora. Es el contrato que el

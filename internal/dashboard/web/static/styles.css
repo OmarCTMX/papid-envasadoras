@@ -127,6 +127,11 @@ body {
     margin: 0 3px;
 }
 
+/* Orden terminada (lotes completados = totales): el lote se pinta en verde. */
+.header-lote.terminada .header-lote-valor {
+    color: var(--ok);
+}
+
 /* ============================================================
    CONTENEDOR PRINCIPAL — las tres valvuladoras en fila
    ============================================================ */
@@ -498,6 +503,12 @@ body {
 @keyframes latido {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.35; }
+}
+
+/* Rol del trabajador, más tenue que el nombre. */
+.footer-rol {
+    font-size: 0.7em;
+    color: var(--muted);
 }
 
 /* Centro: nombres de los trabajadores, en negro. */

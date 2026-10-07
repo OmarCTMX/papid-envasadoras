@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: dashboard-envasadoras:latest
-    container_name: papid-envasadora-${MACHINE_CODE:-envasadora-1}
+    container_name: papid-envasadora-${MACHINE_CODE:-B2-A-silo-1}
     restart: unless-stopped
     env_file:
       - .env
@@ -33,8 +33,11 @@ services:
       TZ: America/Mexico_City
       PORT: "3000"
       REGION: ${REGION:-Cotija}
-      MACHINE_CODE: ${MACHINE_CODE:-silo-1}
-      MAQUINA: ${MAQUINA:-Silo 1}
+      MACHINE_CODE: ${MACHINE_CODE:-B2-A-silo-1}
+      MAQUINA: ${MAQUINA:-B2-A Silo 1}
+      NUM_ENVASADORAS: ${NUM_ENVASADORAS:-2}
+      API_TOKEN: ${API_TOKEN:-}
+      RESET_HORA: ${RESET_HORA:-18:00}
       NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
       NATS_USER: ${NATS_USER:-papid}
       NATS_PASS: ${NATS_PASS:-papid2024}

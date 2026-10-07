@@ -109,3 +109,54 @@ func TestNormalizarRegistros(t *testing.T) {
 		t.Errorf("las valvuladoras rellenadas debían traer registros vacíos, no nil")
 	}
 }
+
+// TestLotesCompletados verifica la regla ⌊bultos / porLote⌋ con tope en total.
+func TestLotesCompletados(t *testing.T) {
+	casos := []struct{ bultos, porLote, total, esperado int }{
+		{0, 30, 6, 0},
+		{29, 30, 6, 0},
+		{30, 30, 6, 1},  // 30/30 → 1 lote
+		{60, 30, 6, 2},  // 60/30 → 2
+		{70, 30, 6, 2},  // 70/30 → todavía 2
+		{500, 30, 6, 6}, // no pasa de 6/6
+		{10, 0, 6, 0},   // sin bultos por lote definido
+	}
+	for _, c := range casos {
+		if got := LotesCompletados(c.bultos, c.porLote, c.total); got != c.esperado {
+			t.Errorf("LotesCompletados(%d,%d,%d) = %d, esperaba %d", c.bultos, c.porLote, c.total, got, c.esperado)
+		}
+	}
+}
+
+// TestCodigoDeMaquina verifica la traducción del nombre del admin al machine_code.
+func TestCodigoDeMaquina(t *testing.T) {
+	casos := map[string]string{
+		"B2 (A) 3":     "B2-A-silo-3",
+		"B2(B)1":       "B2-B-silo-1",
+		" B2 (A) 4 ":   "B2-A-silo-4",
+		"B2-A-silo-2":  "B2-A-silo-2", // ya en formato machine_code
+		"":             "",
+		"B2 (A)":       "", // falta el silo
+		"maquina rara": "",
+	}
+	for entrada, esperado := range casos {
+		if got := CodigoDeMaquina(entrada); got != esperado {
+			t.Errorf("CodigoDeMaquina(%q) = %q, esperaba %q", entrada, got, esperado)
+		}
+	}
+}
+
+// TestFlexNum verifica que los números se acepten como número o como texto.
+func TestFlexNum(t *testing.T) {
+	var v struct {
+		A FlexNum `json:"a"`
+		B FlexNum `json:"b"`
+		C FlexNum `json:"c"`
+	}
+	if err := json.Unmarshal([]byte(`{"a":118,"b":"20.5","c":null}`), &v); err != nil {
+		t.Fatalf("no debía fallar: %v", err)
+	}
+	if v.A != 118 || v.B != 20.5 || v.C != 0 {
+		t.Errorf("FlexNum mal: %+v", v)
+	}
+}
