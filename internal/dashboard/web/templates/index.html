@@ -44,7 +44,7 @@
             </span>
         </div>
 
-        <!-- Centro: trabajadores asignados (del emitter, por SSE). -->
+        <!-- Centro: personal de la orden (llega en el POST /api/orden). -->
         <span class="footer-trabajadores" id="footer-trabajadores">—</span>
 
         <!-- Derecha: reloj -->
@@ -55,7 +55,7 @@
     // ============================================================
     //  Configuración inyectada por el servidor.
     // ============================================================
-    const NUM_VALVULADORAS = 3;
+    const NUM_VALVULADORAS = {{.NumEnvasadoras}};
 
     // ============================================================
     //  Construcción de las tres tarjetas (una sola vez).
@@ -249,13 +249,14 @@
         // --- Header ---
         document.getElementById('of-num').textContent = fmt(estado.of);
         document.getElementById('item-name').textContent = estado.item_name || '';
-        document.getElementById('lote-actual').textContent = fmt(estado.lote_actual);
-        document.getElementById('lotes-totales').textContent = fmt(estado.lotes_totales);
+        // Lote: lotes COMPLETADOS / totales (sin orden: "—").
+        const hayOrden = !!estado.of;
+        document.getElementById('lote-actual').textContent = hayOrden ? fmt(estado.lote_actual) : '—';
+        document.getElementById('lotes-totales').textContent = hayOrden ? fmt(estado.lotes_totales) : '—';
+        document.querySelector('.header-lote').classList.toggle('terminada', !!estado.orden_terminada);
 
-        // Footer: nombres del personal asignado (del emitter). Si no hay, "—".
-        var trabajadores = estado.trabajadores || [];
-        document.getElementById('footer-trabajadores').textContent =
-            trabajadores.length ? trabajadores.join('  ·  ') : '—';
+        // Footer: personal de la orden (viene en el POST): "Nombre (Rol) · ...".
+        pintarTrabajadores(estado.trabajadores || []);
 
         // --- Valvuladoras ---
         const vals = estado.valvuladoras || [];
@@ -280,6 +281,25 @@
             marcarLed('led-limpieza-' + i, leds.limpieza);
             marcarLed('led-ciclo-' + i, leds.ciclo);
         }
+    }
+
+    // pintarTrabajadores arma el footer con textContent (nunca innerHTML con
+    // datos externos): "Omar Ramirez (Envasador) · Michel Davalos (Envasador)".
+    function pintarTrabajadores(lista) {
+        const el = document.getElementById('footer-trabajadores');
+        const frag = document.createDocumentFragment();
+        lista.forEach(function (t, i) {
+            if (i > 0) frag.appendChild(document.createTextNode('  ·  '));
+            frag.appendChild(document.createTextNode(t.nombre || ''));
+            if (t.rol) {
+                const rol = document.createElement('span');
+                rol.className = 'footer-rol';
+                rol.textContent = ' (' + t.rol + ')';
+                frag.appendChild(rol);
+            }
+        });
+        if (!lista.length) frag.appendChild(document.createTextNode('—'));
+        el.replaceChildren(frag);
     }
 
     // marcarLed enciende/apaga un LED por su id agregando/quitando la clase .on

@@ -1,0 +1,149 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Dashboard de Envasadoras (silo)",
+    "version": "1.0.0",
+    "description": "API del dashboard de valvuladoras de UN silo. El admin carga la orden y el personal con POST /api/orden. Los datos de proceso (peso, bultos, setpoint, columna, LEDs) llegan por NATS desde el PLC.\n\nLotes completados = ⌊bultos de la orden / cantidadBts⌋ (máximo noLotes). Los bultos de la orden son la suma de todas las envasadoras del silo y se reinician con cada orden nueva.\n\nSi el dashboard tiene API_TOKEN, POST y DELETE requieren `Authorization: Bearer <token>`."
+  },
+  "components": {
+    "securitySchemes": {
+      "token": { "type": "http", "scheme": "bearer", "description": "Valor de API_TOKEN del .env del dashboard (si está configurado)." }
+    },
+    "schemas": {
+      "Persona": {
+        "type": "object",
+        "required": ["nombre"],
+        "properties": {
+          "nombre": { "type": "string", "example": "Omar Ramirez", "description": "También se acepta \"name\"." },
+          "rol": { "type": "string", "example": "Envasador", "description": "También se acepta \"tipo_asignacion\"." },
+          "employee_id": { "type": "string", "example": "V000" }
+        }
+      },
+      "PeticionOrden": {
+        "type": "object",
+        "required": ["docNum", "itemName", "pesoProducto", "noLotes", "cantidadBts"],
+        "description": "La orden tal como la manda el admin, más el personal. Los campos que no usa la pantalla (por ejemplo \"materiales\") se ignoran.",
+        "properties": {
+          "docEntry": { "type": "integer", "example": 231527 },
+          "docNum": { "type": "integer", "example": 955430, "description": "Número de orden (se muestra en el header)." },
+          "fecha": { "type": "string", "example": "2026-10-05T00:00:00" },
+          "itemCode": { "type": "string", "example": "PPIE" },
+          "itemName": { "type": "string", "example": "COT. Pegapiedra Gris Pegaduro 20 kg", "description": "Título de la orden (header)." },
+          "pesoProducto": { "type": "number", "example": 20, "description": "kg por bulto: es el 100% de llenado de las bolas." },
+          "noLotes": { "type": "integer", "example": 6, "description": "Total de lotes de la orden." },
+          "cantidadBts": { "type": "integer", "example": 118, "description": "Bultos por lote (invisible en pantalla). Cada cantidadBts bultos se completa un lote." },
+          "factorProductividad": { "type": "number", "example": 1 },
+          "maquina": { "type": "string", "example": "B2 (A) 1", "description": "Se traduce a B2-A-silo-1 y debe coincidir con el MACHINE_CODE del dashboard; si no, se rechaza con 409." },
+          "estatus": { "type": "string", "example": "Liberada" },
+          "personal": { "type": "array", "items": { "$ref": "#/components/schemas/Persona" } }
+        }
+      },
+      "RespuestaOrden": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "mensaje": { "type": "string" },
+          "machine_code": { "type": "string", "example": "B2-A-silo-1" },
+          "orden": { "type": "object", "nullable": true, "description": "null si no hay orden cargada." },
+          "personal": { "type": "array", "items": { "$ref": "#/components/schemas/Persona" } },
+          "avance": {
+            "type": "object",
+            "properties": {
+              "bultos_orden": { "type": "integer", "example": 130 },
+              "bultos_por_envasadora": { "type": "array", "items": { "type": "integer" }, "example": [66, 64] },
+              "bultos_por_lote": { "type": "integer", "example": 118 },
+              "lotes_completados": { "type": "integer", "example": 1 },
+              "lotes_totales": { "type": "integer", "example": 6 },
+              "orden_terminada": { "type": "boolean", "example": false }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "ok": { "type": "boolean", "example": false }, "mensaje": { "type": "string" } }
+      }
+    }
+  },
+  "paths": {
+    "/api/orden": {
+      "post": {
+        "summary": "Cargar la orden y el personal",
+        "description": "Reemplaza la orden actual. Reinicia los bultos de la orden, los lotes completados y la tabla de bultos.",
+        "security": [{ "token": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PeticionOrden" },
+              "example": {
+                "docEntry": 231527,
+                "docNum": 955430,
+                "fecha": "2026-10-05T00:00:00",
+                "itemCode": "PPIE",
+                "itemName": "COT. Pegapiedra Gris Pegaduro 20 kg",
+                "pesoProducto": 20,
+                "noLotes": 6,
+                "cantidadBts": 118,
+                "factorProductividad": 1,
+                "maquina": "B2 (A) 1",
+                "estatus": "Liberada",
+                "personal": [
+                  { "nombre": "Omar Ramirez", "rol": "Envasador", "employee_id": "V000" },
+                  { "nombre": "Michel Davalos", "rol": "Envasador", "employee_id": "V0912" }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Orden cargada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "400": { "description": "JSON inválido o faltan campos", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "La orden es de otro silo", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "get": {
+        "summary": "Orden actual y avance",
+        "responses": {
+          "200": { "description": "Orden, personal y avance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Quitar la orden",
+        "description": "Deja la pantalla sin orden y los contadores en cero.",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "Orden quitada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/orden/emitter": {
+      "delete": {
+        "summary": "Pedir al emitter que quite la orden (unsigned)",
+        "description": "Publica papid.admin.unsigned a NATS para que el emitter borre la orden y el personal de ESTE silo. No toca la orden de la API (la del POST). Útil desde /control para dejar ambos lados sincronizados.",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "Unsigned enviado al emitter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Token inválido o ausente" },
+          "503": { "description": "Sin conexión a NATS" }
+        }
+      }
+    },
+    "/api/control": {
+      "get": {
+        "summary": "Comparar la orden del emitter (NATS) y la de la API (POST)",
+        "description": "Devuelve las DOS órdenes de este silo para tener control: la del emitter (papid.admin.signed, leída de su KV) y la de la API (POST /api/orden), con el avance de bultos/lotes. Lo usa la página /control.",
+        "responses": { "200": { "description": "Ambas órdenes" } }
+      }
+    },
+    "/api/estado": {
+      "get": {
+        "summary": "Estado completo de la pantalla",
+        "description": "Lo mismo que recibe el navegador por SSE: header, envasadoras (peso, setpoint, columna, LEDs, bultos y tabla) y personal.",
+        "responses": { "200": { "description": "Estado actual" } }
+      }
+    }
+  }
+}

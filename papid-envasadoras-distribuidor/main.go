@@ -130,6 +130,7 @@ func main() {
 // decodBlob acepta las dos formas del blob:
 //   - objeto con { "envasadoras": [ ... ] }
 //   - arreglo directo [ ... ]
+//
 // Así Node-RED puede mandar cualquiera de las dos sin romper nada.
 func decodBlob(data []byte) ([]model.Envasadora, error) {
 	trimmed := bytes.TrimSpace(data)
