@@ -10,15 +10,23 @@ import (
 	"papid-envasadoras/internal/store"
 )
 
-// ordenAdmin es el JSON real del admin (con materiales, que se ignoran) más el
-// personal.
+// ordenAdmin es el JSON real del admin de la ORDEN (con materiales, que se
+// ignoran). El personal ya NO viaja aquí: tiene su propio POST /api/personal.
 const ordenAdmin = `{
   "docEntry": 231527, "docNum": 955430, "fecha": "2026-10-05T00:00:00",
   "itemCode": "PPIE", "itemName": "COT. Pegapiedra Gris Pegaduro 20 kg",
   "pesoProducto": 20, "noLotes": 6, "cantidadBts": 118, "factorProductividad": 1,
   "maquina": "B2 (A) 1", "estatus": "Liberada",
-  "materiales": [{"almacen":"10","cantidadPorLote":9600,"itemCode":"ZACM18-1600"}],
-  "personal": [{"nombre":"Omar Ramirez","rol":"Envasador"},{"name":"Michel Davalos","tipo_asignacion":"Envasador"}]
+  "materiales": [{"almacen":"10","cantidadPorLote":9600,"itemCode":"ZACM18-1600"}]
+}`
+
+// personalAdmin es el JSON del POST /api/personal (nombre corto + tag RFID,
+// aceptando también el formato name/tipo_asignacion del signed).
+const personalAdmin = `{
+  "personal": [
+    {"nombre":"Omar Ramirez","rol":"Envasador","tag":"0004567890"},
+    {"name":"Michel Davalos","tipo_asignacion":"Ayudante"}
+  ]
 }`
 
 func servidor(token string) (*httptest.Server, *store.Store) {
@@ -28,9 +36,15 @@ func servidor(token string) (*httptest.Server, *store.Store) {
 	return httptest.NewServer(mux), st
 }
 
+// post manda a /api/orden (compatibilidad con los tests existentes).
 func post(t *testing.T, url, body, token string) (*http.Response, map[string]any) {
+	return postA(t, url+"/api/orden", body, token)
+}
+
+// postA manda un POST a la ruta completa indicada.
+func postA(t *testing.T, fullURL, body, token string) (*http.Response, map[string]any) {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, url+"/api/orden", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, fullURL, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -58,8 +72,71 @@ func TestPostOrdenCarga(t *testing.T) {
 		e.LotesTotales != 6 || e.BultosPorLote != 118 || e.PesoProducto != 20 {
 		t.Fatalf("orden mal aplicada: %+v", e)
 	}
-	if len(e.Trabajadores) != 2 || e.Trabajadores[1].Nombre != "Michel Davalos" || e.Trabajadores[1].Rol != "Envasador" {
-		t.Fatalf("personal mal aplicado (incluye formato name/tipo_asignacion): %+v", e.Trabajadores)
+	// La orden NO trae personal.
+	if len(e.Trabajadores) != 0 {
+		t.Fatalf("la orden no debe traer personal: %+v", e.Trabajadores)
+	}
+}
+
+func TestPostPersonal(t *testing.T) {
+	srv, st := servidor("")
+	defer srv.Close()
+
+	res, out := postA(t, srv.URL+"/api/personal", personalAdmin, "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuve %d: %v", res.StatusCode, out)
+	}
+	e := st.Estado()
+	if len(e.Trabajadores) != 2 {
+		t.Fatalf("esperaba 2 personas: %+v", e.Trabajadores)
+	}
+	if e.Trabajadores[0].Nombre != "Omar Ramirez" || e.Trabajadores[0].Tag != "0004567890" {
+		t.Fatalf("nombre/tag mal: %+v", e.Trabajadores[0])
+	}
+	// Acepta el formato name/tipo_asignacion del signed.
+	if e.Trabajadores[1].Nombre != "Michel Davalos" || e.Trabajadores[1].Rol != "Ayudante" {
+		t.Fatalf("formato name/tipo_asignacion mal: %+v", e.Trabajadores[1])
+	}
+
+	// POST con lista vacía vacía el personal.
+	if res, _ := postA(t, srv.URL+"/api/personal", `{"personal":[]}`, ""); res.StatusCode != http.StatusOK {
+		t.Fatalf("POST vacío debía dar 200, obtuve %d", res.StatusCode)
+	}
+	if len(st.Estado().Trabajadores) != 0 {
+		t.Fatalf("lista vacía debía dejar sin personal: %+v", st.Estado().Trabajadores)
+	}
+}
+
+func TestDeletePersonal(t *testing.T) {
+	srv, st := servidor("")
+	defer srv.Close()
+	postA(t, srv.URL+"/api/personal", personalAdmin, "")
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/personal", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("DELETE /api/personal falló: %v %v", err, res)
+	}
+	res.Body.Close()
+	if len(st.Estado().Trabajadores) != 0 {
+		t.Fatal("tras DELETE no debía haber personal")
+	}
+}
+
+func TestDeleteOrdenQuitaPersonal(t *testing.T) {
+	srv, st := servidor("")
+	defer srv.Close()
+	post(t, srv.URL, ordenAdmin, "")
+	postA(t, srv.URL+"/api/personal", personalAdmin, "")
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/orden", nil)
+	res, _ := http.DefaultClient.Do(req)
+	res.Body.Close()
+
+	e := st.Estado()
+	if st.TieneOrden() || len(e.Trabajadores) != 0 {
+		t.Fatalf("DELETE /api/orden debía quitar orden Y personal: orden=%v personal=%+v",
+			st.TieneOrden(), e.Trabajadores)
 	}
 }
 

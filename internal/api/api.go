@@ -1,10 +1,12 @@
 // Package api expone la API REST del dashboard del silo:
 //
-//	POST   /api/orden   → el admin carga la orden + personal (reinicia contadores)
-//	GET    /api/orden   → orden actual, personal y avance (bultos / lotes)
-//	DELETE /api/orden   → quita la orden (pantalla en blanco, contadores en cero)
-//	GET    /api/estado  → estado completo que ve la pantalla
-//	GET    /docs        → documentación interactiva (Scalar, sin internet)
+//	POST   /api/orden     → el admin carga la orden (reinicia contadores)
+//	GET    /api/orden     → orden actual, personal y avance (bultos / lotes)
+//	DELETE /api/orden     → quita la orden Y el personal (pantalla en blanco)
+//	POST   /api/personal  → reemplaza la lista de personal (lista vacía la vacía)
+//	DELETE /api/personal  → vacía el personal (no toca la orden)
+//	GET    /api/estado    → estado completo que ve la pantalla
+//	GET    /docs          → documentación interactiva (Scalar, sin internet)
 //
 // Si API_TOKEN está definido, POST y DELETE exigen el header
 // "Authorization: Bearer <token>" (o "X-API-Token: <token>"). Sin token, la
@@ -59,6 +61,8 @@ func (a *API) Registrar(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/orden", a.getOrden)
 	mux.HandleFunc("DELETE /api/orden", a.autenticado(a.deleteOrden))
 	mux.HandleFunc("DELETE /api/orden/emitter", a.autenticado(a.deleteOrdenEmitter))
+	mux.HandleFunc("POST /api/personal", a.autenticado(a.postPersonal))
+	mux.HandleFunc("DELETE /api/personal", a.autenticado(a.deletePersonal))
 	mux.HandleFunc("GET /api/estado", a.getEstado)
 	mux.HandleFunc("GET /api/control", a.getControl)
 	mux.HandleFunc("GET /api/openapi.json", a.openapi)
@@ -82,16 +86,23 @@ type peticionOrden struct {
 	FactorProductividad model.FlexNum    `json:"factorProductividad"`
 	Maquina             string           `json:"maquina"`
 	Estatus             string           `json:"estatus"`
-	Personal            []personaOrden   `json:"personal"`
 }
 
-// personaOrden acepta los nombres de campo en español o en el formato del
+// peticionPersonal es el JSON del POST /api/personal: la lista completa de
+// personas a mostrar en la pantalla. Reemplaza lo que haya; una lista vacía
+// deja el silo sin personal.
+type peticionPersonal struct {
+	Personal []personaPost `json:"personal"`
+}
+
+// personaPost acepta los nombres de campo en español o en el formato del
 // signed (name / tipo_asignacion), para no atar al admin a uno solo.
-type personaOrden struct {
+type personaPost struct {
 	Nombre         string `json:"nombre"`
 	Name           string `json:"name"`
 	Rol            string `json:"rol"`
 	TipoAsignacion string `json:"tipo_asignacion"`
+	Tag            string `json:"tag"`
 	EmployeeID     string `json:"employee_id"`
 }
 
@@ -124,10 +135,6 @@ func (a *API) postOrden(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "faltan o son inválidos: "+strings.Join(faltan, ", "))
 		return
 	}
-	if len(p.Personal) > maxPersonal {
-		apiError(w, http.StatusBadRequest, fmt.Sprintf("máximo %d personas por orden", maxPersonal))
-		return
-	}
 
 	// La orden debe ser de ESTE silo: "B2 (A) 3" → "B2-A-silo-3". Así una
 	// orden mandada a la NUC equivocada se rechaza en vez de mostrarse mal.
@@ -146,19 +153,6 @@ func (a *API) postOrden(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	personal := make([]model.Trabajador, 0, len(p.Personal))
-	for _, per := range p.Personal {
-		nombre := primero(per.Nombre, per.Name)
-		if nombre == "" {
-			continue
-		}
-		personal = append(personal, model.Trabajador{
-			Nombre:     nombre,
-			Rol:        primero(per.Rol, per.TipoAsignacion),
-			EmployeeID: strings.TrimSpace(per.EmployeeID),
-		})
-	}
-
 	orden := model.Orden{
 		DocEntry:            p.DocEntry,
 		DocNum:              model.FlexString(strings.TrimSpace(string(p.DocNum))),
@@ -173,11 +167,51 @@ func (a *API) postOrden(w http.ResponseWriter, r *http.Request) {
 		Estatus:             p.Estatus,
 		Recibida:            time.Now().Format(time.RFC3339),
 	}
-	a.st.AplicarOrden(orden, personal)
-	log.Printf("[api] Orden %s cargada: %q, %d lotes de %d bultos, %d personas",
-		orden.DocNum, orden.ItemName, orden.NoLotes, orden.CantidadBts, len(personal))
+	a.st.AplicarOrden(orden)
+	log.Printf("[api] Orden %s cargada: %q, %d lotes de %d bultos",
+		orden.DocNum, orden.ItemName, orden.NoLotes, orden.CantidadBts)
 
 	escribirJSON(w, http.StatusOK, a.respuestaOrden("Orden cargada"))
+}
+
+// postPersonal reemplaza la lista completa de personal a mostrar en la
+// pantalla. Una lista vacía (o sin el campo) deja el silo sin personal.
+func (a *API) postPersonal(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxCuerpo)
+	var p peticionPersonal
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		apiError(w, http.StatusBadRequest, "JSON inválido: "+err.Error())
+		return
+	}
+	if len(p.Personal) > maxPersonal {
+		apiError(w, http.StatusBadRequest, fmt.Sprintf("máximo %d personas", maxPersonal))
+		return
+	}
+
+	personal := make([]model.Trabajador, 0, len(p.Personal))
+	for _, per := range p.Personal {
+		nombre := primero(per.Nombre, per.Name)
+		if nombre == "" {
+			continue // una entrada vacía ("1 vacío") simplemente no se agrega
+		}
+		personal = append(personal, model.Trabajador{
+			Nombre:     nombre,
+			Rol:        primero(per.Rol, per.TipoAsignacion),
+			Tag:        strings.TrimSpace(per.Tag),
+			EmployeeID: strings.TrimSpace(per.EmployeeID),
+		})
+	}
+
+	a.st.AplicarPersonal(personal)
+	log.Printf("[api] Personal actualizado: %d personas", len(personal))
+	escribirJSON(w, http.StatusOK, a.respuestaOrden("Personal actualizado"))
+}
+
+// deletePersonal vacía el personal (no toca la orden).
+func (a *API) deletePersonal(w http.ResponseWriter, r *http.Request) {
+	a.st.AplicarPersonal(nil)
+	log.Printf("[api] Personal quitado")
+	escribirJSON(w, http.StatusOK, a.respuestaOrden("Personal quitado"))
 }
 
 func (a *API) getOrden(w http.ResponseWriter, r *http.Request) {

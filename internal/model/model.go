@@ -3,7 +3,10 @@
 // El estado de la pantalla se arma con DOS fuentes:
 //
 //   - La ORDEN (POST /api/orden, la manda el admin): número de orden, nombre,
-//     lotes, bultos por lote (invisible), peso del producto y el PERSONAL.
+//     lotes, bultos por lote (invisible) y peso del producto.
+//   - El PERSONAL (POST /api/personal, la manda el admin): la lista de personas
+//     a mostrar en la pantalla (nombre corto, rol, tag RFID). El estado real
+//     (Activo/Inactivo) y el login por tarjeta los maneja el emitter por NATS.
 //   - El PROCESO (NATS papid.envasadora.<MACHINE_CODE>, del PLC vía Node-RED /
 //     distribuidor): peso de cada bola, contador de bultos del PLC, setpoint,
 //     columna y LEDs.
@@ -125,11 +128,15 @@ type Valvuladora struct {
 	Registros []Registro `json:"registros"`
 }
 
-// Trabajador es una persona asignada al silo (viene en el POST de la orden).
+// Trabajador es una persona asignada al silo. Viene en el POST /api/personal
+// (NO en la orden). Solo es para MOSTRARLO en la pantalla de envasadoras; el
+// estado real (Activo/Inactivo/Asignado) y el login por tarjeta los maneja el
+// emitter vía NATS, no el dashboard.
 type Trabajador struct {
-	Nombre     string `json:"nombre"`
-	Rol        string `json:"rol"`
-	EmployeeID string `json:"employee_id,omitempty"`
+	Nombre     string `json:"nombre"`                // nombre corto que se muestra
+	Rol        string `json:"rol"`                   // rol / tipo de asignación
+	Tag        string `json:"tag,omitempty"`         // número de tarjeta RFID
+	EmployeeID string `json:"employee_id,omitempty"` // id de empleado, si lo manda el admin
 }
 
 // Orden es lo que guarda el dashboard del POST /api/orden. Se ignoran los

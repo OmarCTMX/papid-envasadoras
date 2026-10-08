@@ -43,6 +43,6 @@ services:
       NATS_PASS: ${NATS_PASS:-papid2024}
 
     ports:
-      - "3000:3000"
+      - "3001:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"

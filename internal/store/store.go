@@ -1,9 +1,11 @@
 // Package store mantiene en memoria el estado del silo y hace los cálculos de
 // la orden.
 //
-// Recibe dos cosas:
-//   - AplicarOrden: la orden + personal del POST /api/orden. Reinicia los
-//     bultos y la tabla (una orden nueva empieza en cero).
+// Recibe tres cosas:
+//   - AplicarOrden: la orden del POST /api/orden. Reinicia los bultos y la
+//     tabla (una orden nueva empieza en cero). NO trae personal.
+//   - AplicarPersonal: la lista de personal del POST /api/personal. Reemplaza
+//     la lista completa (lista vacía = sin personal). Solo para mostrar.
 //   - AplicarProceso: los datos del PLC (peso, setpoint, columna, leds y el
 //     CONTADOR de bultos del PLC de cada envasadora).
 //
@@ -48,6 +50,18 @@ type Store struct {
 
 	onChange  func()               // empuja el estado por SSE
 	onGuardar func(model.Snapshot) // persiste en KV (orden, contadores, tabla)
+	onOrden   func(EventoOrden)    // avisa cuando la orden aparece/desaparece
+}
+
+// EventoOrden es lo que se publica (a NATS) cuando cambia la presencia de la
+// orden, para que Node-RED decida el cambio de pantalla. "TieneOrden" es la
+// pieza que a Node-RED le faltaba (el personal lo saca del emitter).
+type EventoOrden struct {
+	MachineCode  string `json:"machine_code"`
+	TieneOrden   bool   `json:"tiene_orden"`
+	OF           string `json:"of,omitempty"`
+	ItemName     string `json:"item_name,omitempty"`
+	LotesTotales int    `json:"lotes_totales,omitempty"`
 }
 
 // New crea un store vacío para un silo con n envasadoras.
@@ -97,6 +111,44 @@ func (s *Store) SetOnGuardar(fn func(model.Snapshot)) {
 	s.mu.Unlock()
 }
 
+// SetOnOrden registra el callback que avisa cuando la orden aparece o
+// desaparece (para el cambio de pantalla). Solo se dispara en AplicarOrden,
+// QuitarOrden y Restaurar, no con cada lectura del PLC.
+func (s *Store) SetOnOrden(fn func(EventoOrden)) {
+	s.mu.Lock()
+	s.onOrden = fn
+	s.mu.Unlock()
+}
+
+// eventoOrden arma el EventoOrden del estado actual. Requiere lock (lectura).
+func (s *Store) eventoOrdenLocked() EventoOrden {
+	ev := EventoOrden{MachineCode: s.machineCode, TieneOrden: s.orden != nil}
+	if s.orden != nil {
+		ev.OF = string(s.orden.DocNum)
+		ev.ItemName = s.orden.ItemName
+		ev.LotesTotales = s.orden.NoLotes
+	}
+	return ev
+}
+
+// EventoOrden devuelve el evento de orden actual (para republicar al conectar).
+func (s *Store) EventoOrden() EventoOrden {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.eventoOrdenLocked()
+}
+
+// avisarOrden dispara onOrden con el estado actual. Se llama con el lock libre.
+func (s *Store) avisarOrden() {
+	s.mu.RLock()
+	fn := s.onOrden
+	ev := s.eventoOrdenLocked()
+	s.mu.RUnlock()
+	if fn != nil {
+		fn(ev)
+	}
+}
+
 // MachineCode devuelve el código de este silo.
 func (s *Store) MachineCode() string { return s.machineCode }
 
@@ -121,17 +173,32 @@ func (s *Store) Orden() (*model.Orden, []model.Trabajador) {
 	return &o, append([]model.Trabajador{}, s.trabajadores...)
 }
 
-// AplicarOrden carga una orden nueva (del POST). Reinicia los bultos de la
-// orden y la tabla: cada orden empieza en cero.
-func (s *Store) AplicarOrden(o model.Orden, trabajadores []model.Trabajador) {
+// AplicarOrden carga una orden nueva (del POST /api/orden). Reinicia los bultos
+// de la orden y la tabla: cada orden empieza en cero. NO toca el personal (ese
+// llega por su propio POST /api/personal).
+func (s *Store) AplicarOrden(o model.Orden) {
 	s.mu.Lock()
 	copia := o
 	s.orden = &copia
+	s.limpiarContadores()
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+
+	s.guardar(snap)
+	s.avisarOrden()
+	s.notificar()
+}
+
+// AplicarPersonal reemplaza la lista completa de personal (del POST
+// /api/personal). Una lista vacía deja el silo sin personal. No toca la orden
+// ni los contadores, y no dispara el aviso de orden (el cambio de pantalla
+// depende del status del emitter, no de esta lista).
+func (s *Store) AplicarPersonal(trabajadores []model.Trabajador) {
+	s.mu.Lock()
 	if trabajadores == nil {
 		trabajadores = []model.Trabajador{}
 	}
 	s.trabajadores = trabajadores
-	s.limpiarContadores()
 	snap := s.snapshotLocked()
 	s.mu.Unlock()
 
@@ -150,6 +217,7 @@ func (s *Store) QuitarOrden() {
 	s.mu.Unlock()
 
 	s.guardar(snap)
+	s.avisarOrden()
 	s.notificar()
 }
 
@@ -263,6 +331,7 @@ func (s *Store) Restaurar(snap model.Snapshot) bool {
 		}
 	}
 	s.mu.Unlock()
+	s.avisarOrden()
 	s.notificar()
 	return true
 }
