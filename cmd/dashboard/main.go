@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -109,6 +110,10 @@ func main() {
 	// emitterKV lee (sin escribir) el KV del emitter, para la vista /control.
 	var emitterKV atomic.Pointer[persistence.EmitterKV]
 
+	// nc se declara aquí (no dentro del bloque NATS) porque varias closures de
+	// arriba lo capturan (publicarOrden, controlEmitter).
+	var nc *nats.Conn
+
 	// Al conectar (la primera vez): abrir el KV y restaurar lo guardado.
 	alConectar := func(c *nats.Conn) {
 		kv, err := persistence.New(c)
@@ -139,7 +144,33 @@ func main() {
 			// Llegó una orden por POST antes de conectar: se guarda ahora.
 			encolar(st.Snapshot())
 		}
+
+		// Republica el aviso de orden para que Node-RED tenga el estado vigente
+		// aunque haya arrancado (o reconectado) después del dashboard.
+		if data, err := json.Marshal(st.EventoOrden()); err == nil {
+			c.Publish("papid.envasadora.orden."+machineCode, data)
+		}
 	}
+
+	// --- Aviso de orden a Node-RED (cambio de pantalla) ---
+	// Cuando la orden aparece/desaparece, se publica a NATS en
+	// papid.envasadora.orden.<MACHINE_CODE>. Node-RED combina ESTO (¿hay orden?)
+	// con el personal del emitter (¿hay trabajadores registrados?) para decidir:
+	//   orden + personal registrado -> pantalla de envasadoras
+	//   falta cualquiera            -> Dashboard Personal
+	// nc se asigna más abajo; estas closures lo leen cuando ya está listo.
+	subjOrden := "papid.envasadora.orden." + machineCode
+	publicarOrden := func(ev store.EventoOrden) {
+		if nc == nil {
+			return
+		}
+		if data, err := json.Marshal(ev); err == nil {
+			if err := nc.Publish(subjOrden, data); err != nil {
+				log.Printf("[dashboard] No se pudo publicar el aviso de orden: %v", err)
+			}
+		}
+	}
+	st.SetOnOrden(publicarOrden)
 
 	// --- NATS ---
 	cfgNats := natsclient.Config{
@@ -148,7 +179,6 @@ func main() {
 		Pass:        os.Getenv("NATS_PASS"),
 		MachineCode: machineCode,
 	}
-	var nc *nats.Conn
 	if conn, err := natsclient.Conectar(cfgNats, alConectar); err != nil {
 		log.Printf("[dashboard] No se pudo conectar a NATS: %v (el dashboard sigue funcionando)", err)
 	} else {

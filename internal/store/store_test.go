@@ -28,7 +28,8 @@ func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
 
 	// El PLC ya venía contando antes de la orden: 100 y 50 bultos.
 	st.AplicarProceso(proceso([]int{100, 50}, []float64{0, 0}))
-	st.AplicarOrden(ordenPrueba(), []model.Trabajador{{Nombre: "Omar Ramirez", Rol: "Envasador"}})
+	st.AplicarOrden(ordenPrueba())
+	st.AplicarPersonal([]model.Trabajador{{Nombre: "Omar Ramirez", Rol: "Envasador"}})
 
 	if e := st.Estado(); e.BultosOrden != 0 || e.LoteActual != 0 {
 		t.Fatalf("al cargar la orden todo debe empezar en 0: %+v", e)
@@ -64,7 +65,7 @@ func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
 func TestIDyPesoDelPLC(t *testing.T) {
 	st := New("B2-A-silo-1", 2)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
-	st.AplicarOrden(ordenPrueba(), nil)
+	st.AplicarOrden(ordenPrueba())
 
 	e := proceso([]int{1, 0}, []float64{0, 0})
 	e.Valvuladoras[0].IDBulto = "B-7781"
@@ -82,7 +83,7 @@ func TestIDyPesoDelPLC(t *testing.T) {
 func TestOrdenTerminadaYTope(t *testing.T) {
 	st := New("B2-A-silo-1", 2)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
-	st.AplicarOrden(ordenPrueba(), nil) // 6 lotes de 3 bultos = 18
+	st.AplicarOrden(ordenPrueba()) // 6 lotes de 3 bultos = 18
 
 	st.AplicarProceso(proceso([]int{10, 12}, []float64{0, 0})) // 22 bultos
 	e := st.Estado()
@@ -96,10 +97,10 @@ func TestOrdenTerminadaYTope(t *testing.T) {
 func TestOrdenNuevaReinicia(t *testing.T) {
 	st := New("B2-A-silo-1", 2)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
-	st.AplicarOrden(ordenPrueba(), nil)
+	st.AplicarOrden(ordenPrueba())
 	st.AplicarProceso(proceso([]int{4, 0}, []float64{0, 0}))
 
-	st.AplicarOrden(ordenPrueba(), nil)
+	st.AplicarOrden(ordenPrueba())
 	e := st.Estado()
 	if e.BultosOrden != 0 || len(e.Valvuladoras[0].Registros) != 0 {
 		t.Fatalf("la orden nueva debía empezar en cero: %+v", e)
@@ -116,7 +117,7 @@ func TestOrdenNuevaReinicia(t *testing.T) {
 func TestReinicioDelPLC(t *testing.T) {
 	st := New("B2-A-silo-1", 1)
 	st.AplicarProceso(proceso([]int{50}, []float64{0}))
-	st.AplicarOrden(ordenPrueba(), nil)
+	st.AplicarOrden(ordenPrueba())
 	st.AplicarProceso(proceso([]int{52}, []float64{0})) // +2
 	st.AplicarProceso(proceso([]int{1}, []float64{0}))  // el PLC se reinició: +1
 	if b := st.Estado().BultosOrden; b != 3 {
@@ -139,7 +140,8 @@ func TestSinOrdenNoCuenta(t *testing.T) {
 func TestRestaurar(t *testing.T) {
 	origen := New("B2-A-silo-1", 2)
 	origen.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
-	origen.AplicarOrden(ordenPrueba(), []model.Trabajador{{Nombre: "Omar"}})
+	origen.AplicarOrden(ordenPrueba())
+	origen.AplicarPersonal([]model.Trabajador{{Nombre: "Omar"}})
 	origen.AplicarProceso(proceso([]int{2, 1}, []float64{0, 0}))
 	snap := origen.Snapshot()
 
@@ -159,5 +161,64 @@ func TestRestaurar(t *testing.T) {
 
 	if nuevo.Restaurar(snap) {
 		t.Fatal("con una orden ya cargada no debía restaurar encima")
+	}
+}
+
+// TestEventoOrden verifica que onOrden se dispare con tiene_orden true al
+// cargar y false al quitar, y que NO se dispare con las lecturas del PLC.
+func TestEventoOrden(t *testing.T) {
+	st := New("B2-A-silo-1", 2)
+	var ultimo EventoOrden
+	n := 0
+	st.SetOnOrden(func(ev EventoOrden) { ultimo = ev; n++ })
+
+	st.AplicarOrden(ordenPrueba())
+	if n != 1 || !ultimo.TieneOrden || ultimo.OF != "955430" || ultimo.LotesTotales != 6 {
+		t.Fatalf("al cargar: n=%d ev=%+v", n, ultimo)
+	}
+
+	// Las lecturas del PLC no deben disparar el evento de orden.
+	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
+	st.AplicarProceso(proceso([]int{1, 0}, []float64{0, 0}))
+	if n != 1 {
+		t.Fatalf("el PLC no debía disparar el evento de orden; n=%d", n)
+	}
+
+	st.QuitarOrden()
+	if n != 2 || ultimo.TieneOrden {
+		t.Fatalf("al quitar: n=%d ev=%+v (tiene_orden debía ser false)", n, ultimo)
+	}
+}
+
+// TestAplicarPersonal verifica que la lista se reemplace completa, que una
+// lista vacía deje sin personal, y que no dispare el evento de orden (el
+// personal no cambia la pantalla; eso lo decide el status del emitter).
+func TestAplicarPersonal(t *testing.T) {
+	st := New("B2-A-silo-1", 2)
+	nOrden := 0
+	st.SetOnOrden(func(EventoOrden) { nOrden++ })
+
+	st.AplicarPersonal([]model.Trabajador{
+		{Nombre: "Omar", Rol: "Envasador", Tag: "0004567890"},
+		{Nombre: "Ana", Rol: "Ayudante"},
+	})
+	if e := st.Estado(); len(e.Trabajadores) != 2 || e.Trabajadores[0].Tag != "0004567890" {
+		t.Fatalf("personal mal aplicado: %+v", e.Trabajadores)
+	}
+
+	// Reemplaza, no agrega.
+	st.AplicarPersonal([]model.Trabajador{{Nombre: "Luis", Rol: "Envasador"}})
+	if e := st.Estado(); len(e.Trabajadores) != 1 || e.Trabajadores[0].Nombre != "Luis" {
+		t.Fatalf("debía reemplazar la lista completa: %+v", e.Trabajadores)
+	}
+
+	// Lista vacía deja el silo sin personal.
+	st.AplicarPersonal(nil)
+	if e := st.Estado(); len(e.Trabajadores) != 0 {
+		t.Fatalf("lista vacía debía dejar sin personal: %+v", e.Trabajadores)
+	}
+
+	if nOrden != 0 {
+		t.Fatalf("el personal no debía disparar el evento de orden; n=%d", nOrden)
 	}
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "API Dashboard de Envasadoras (silo)",
     "version": "1.0.0",
-    "description": "API del dashboard de valvuladoras de UN silo. El admin carga la orden y el personal con POST /api/orden. Los datos de proceso (peso, bultos, setpoint, columna, LEDs) llegan por NATS desde el PLC.\n\nLotes completados = ⌊bultos de la orden / cantidadBts⌋ (máximo noLotes). Los bultos de la orden son la suma de todas las envasadoras del silo y se reinician con cada orden nueva.\n\nSi el dashboard tiene API_TOKEN, POST y DELETE requieren `Authorization: Bearer <token>`."
+    "description": "API del dashboard de valvuladoras de UN silo. El admin carga la orden con POST /api/orden y el personal (por separado) con POST /api/personal. Los datos de proceso (peso, bultos, setpoint, columna, LEDs) llegan por NATS desde el PLC.\n\nEl personal del POST /api/personal es solo para MOSTRARLO en la pantalla (nombre corto, rol, tag RFID). El estado real (Activo/Inactivo) y el login por tarjeta los maneja el emitter por NATS, no esta API.\n\nLotes completados = ⌊bultos de la orden / cantidadBts⌋ (máximo noLotes). Los bultos de la orden son la suma de todas las envasadoras del silo y se reinician con cada orden nueva.\n\nSi el dashboard tiene API_TOKEN, POST y DELETE requieren `Authorization: Bearer <token>`."
   },
   "components": {
     "securitySchemes": {
@@ -14,15 +14,24 @@
         "type": "object",
         "required": ["nombre"],
         "properties": {
-          "nombre": { "type": "string", "example": "Omar Ramirez", "description": "También se acepta \"name\"." },
-          "rol": { "type": "string", "example": "Envasador", "description": "También se acepta \"tipo_asignacion\"." },
+          "nombre": { "type": "string", "example": "Omar Ramirez", "description": "Nombre corto que se muestra en pantalla. También se acepta \"name\"." },
+          "rol": { "type": "string", "example": "Envasador", "description": "Rol o tipo de asignación. También se acepta \"tipo_asignacion\"." },
+          "tag": { "type": "string", "example": "0004567890", "description": "Número de tarjeta RFID." },
           "employee_id": { "type": "string", "example": "V000" }
+        }
+      },
+      "PeticionPersonal": {
+        "type": "object",
+        "required": ["personal"],
+        "description": "Lista COMPLETA de personal a mostrar. Reemplaza lo que haya; una lista vacía deja el silo sin personal.",
+        "properties": {
+          "personal": { "type": "array", "items": { "$ref": "#/components/schemas/Persona" } }
         }
       },
       "PeticionOrden": {
         "type": "object",
         "required": ["docNum", "itemName", "pesoProducto", "noLotes", "cantidadBts"],
-        "description": "La orden tal como la manda el admin, más el personal. Los campos que no usa la pantalla (por ejemplo \"materiales\") se ignoran.",
+        "description": "La orden tal como la manda el admin. El personal NO va aquí (se manda por POST /api/personal). Los campos que no usa la pantalla (por ejemplo \"materiales\") se ignoran.",
         "properties": {
           "docEntry": { "type": "integer", "example": 231527 },
           "docNum": { "type": "integer", "example": 955430, "description": "Número de orden (se muestra en el header)." },
@@ -34,8 +43,7 @@
           "cantidadBts": { "type": "integer", "example": 118, "description": "Bultos por lote (invisible en pantalla). Cada cantidadBts bultos se completa un lote." },
           "factorProductividad": { "type": "number", "example": 1 },
           "maquina": { "type": "string", "example": "B2 (A) 1", "description": "Se traduce a B2-A-silo-1 y debe coincidir con el MACHINE_CODE del dashboard; si no, se rechaza con 409." },
-          "estatus": { "type": "string", "example": "Liberada" },
-          "personal": { "type": "array", "items": { "$ref": "#/components/schemas/Persona" } }
+          "estatus": { "type": "string", "example": "Liberada" }
         }
       },
       "RespuestaOrden": {
@@ -68,8 +76,8 @@
   "paths": {
     "/api/orden": {
       "post": {
-        "summary": "Cargar la orden y el personal",
-        "description": "Reemplaza la orden actual. Reinicia los bultos de la orden, los lotes completados y la tabla de bultos.",
+        "summary": "Cargar la orden",
+        "description": "Reemplaza la orden actual. Reinicia los bultos de la orden, los lotes completados y la tabla de bultos. El personal se manda aparte con POST /api/personal.",
         "security": [{ "token": [] }],
         "requestBody": {
           "required": true,
@@ -87,11 +95,7 @@
                 "cantidadBts": 118,
                 "factorProductividad": 1,
                 "maquina": "B2 (A) 1",
-                "estatus": "Liberada",
-                "personal": [
-                  { "nombre": "Omar Ramirez", "rol": "Envasador", "employee_id": "V000" },
-                  { "nombre": "Michel Davalos", "rol": "Envasador", "employee_id": "V0912" }
-                ]
+                "estatus": "Liberada"
               }
             }
           }
@@ -110,11 +114,46 @@
         }
       },
       "delete": {
-        "summary": "Quitar la orden",
-        "description": "Deja la pantalla sin orden y los contadores en cero.",
+        "summary": "Quitar la orden y el personal",
+        "description": "Deja la pantalla sin orden, los contadores en cero y vacía el personal.",
         "security": [{ "token": [] }],
         "responses": {
-          "200": { "description": "Orden quitada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "200": { "description": "Orden y personal quitados", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/personal": {
+      "post": {
+        "summary": "Cargar o reemplazar el personal",
+        "description": "Reemplaza la lista completa de personal a mostrar en la pantalla. Una lista vacía deja el silo sin personal. No toca la orden ni los contadores.",
+        "security": [{ "token": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PeticionPersonal" },
+              "example": {
+                "personal": [
+                  { "nombre": "Omar Ramirez", "rol": "Envasador", "tag": "0004567890", "employee_id": "V000" },
+                  { "nombre": "Michel Davalos", "rol": "Envasador", "tag": "0004567891", "employee_id": "V0912" }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Personal actualizado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "400": { "description": "JSON inválido o demasiadas personas", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Quitar el personal",
+        "description": "Vacía el personal del silo. No toca la orden.",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "Personal quitado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
           "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
