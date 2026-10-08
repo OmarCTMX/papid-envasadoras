@@ -136,7 +136,7 @@
               "example": {
                 "personal": [
                   { "nombre": "Omar Ramirez", "rol": "Envasador", "tag": "0004567890", "employee_id": "V000" },
-                  { "nombre": "Michel Davalos", "rol": "Ayudante", "tag": "0004567891", "employee_id": "V0912" }
+                  { "nombre": "Michel Davalos", "rol": "Envasador", "tag": "0004567891", "employee_id": "V0912" }
                 ]
               }
             }
