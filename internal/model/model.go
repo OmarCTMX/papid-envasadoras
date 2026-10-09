@@ -112,6 +112,10 @@ type Leds struct {
 // Salida (a la pantalla): los mismos campos, pero Bultos es el de la ORDEN
 // actual (calculado por el dashboard) y Registros es la tabla del dashboard.
 type Valvuladora struct {
+	// Codigo es el identificador propio de esta envasadora (del .env,
+	// CODIGOS_ENVASADORAS). No llega del PLC ni del POST; es fijo por máquina y
+	// sirve para los reportes (qué bola física produjo qué).
+	Codigo   string  `json:"codigo,omitempty"`
 	Peso     float64 `json:"peso"`     // peso actual en la báscula (kg)
 	Setpoint float64 `json:"setpoint"` // kg, del PLC (solo se muestra)
 	Columna  float64 `json:"columna"`  // kg, del PLC (solo se muestra)

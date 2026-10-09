@@ -60,8 +60,13 @@ func main() {
 		}
 	}
 
+	// Código identificador de cada bola (CODIGOS_ENVASADORAS del .env), en
+	// orden. Solo es informativo (se muestra junto a los bultos y viaja en el
+	// estado para reportes). Se ajusta a numEnvasadoras.
+	codigos := codigosEnvasadoras(os.Getenv("CODIGOS_ENVASADORAS"), numEnvasadoras)
+
 	// --- Componentes ---
-	st := store.New(machineCode, numEnvasadoras)
+	st := store.New(machineCode, numEnvasadoras, codigos)
 	broker := sse.New()
 
 	renderer, err := render.New("internal/dashboard/web/templates")
@@ -209,6 +214,7 @@ func main() {
 		Maquina:        getenv("MAQUINA", machineCode),
 		Version:        strconv.FormatInt(time.Now().Unix(), 10),
 		NumEnvasadoras: numEnvasadoras,
+		Codigos:        codigos,
 	}
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		html, err := renderer.Index(datosIndex)
@@ -309,6 +315,30 @@ func construirTitulo() string {
 		partes = append(partes, maquina)
 	}
 	return strings.Join(partes, " | ")
+}
+
+// codigosEnvasadoras parte CODIGOS_ENVASADORAS (lista separada por comas) y
+// devuelve exactamente n códigos, en orden. Si llegan menos, los faltantes
+// quedan en ""; si llegan más, se descartan los sobrantes. Es solo informativo:
+// el código de cada bola se muestra junto a los bultos y viaja en el estado.
+func codigosEnvasadoras(raw string, n int) []string {
+	out := make([]string, n)
+	if n <= 0 {
+		return out
+	}
+	i := 0
+	for _, parte := range strings.Split(raw, ",") {
+		if i >= n {
+			break
+		}
+		c := strings.TrimSpace(parte)
+		if c == "" {
+			continue
+		}
+		out[i] = c
+		i++
+	}
+	return out
 }
 
 func getenv(clave, def string) string {
