@@ -191,14 +191,31 @@ body {
     flex-shrink: 0;
     align-self: center;
     width: 82%;
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 14px;
+    /* Grid de 3 columnas: [código] [Bultos + número] [hueco].
+       Las columnas laterales son 1fr y en grid un 1fr NUNCA es más angosto que
+       su contenido: con código corto ambas miden igual y el centro queda
+       centrado; con código largo la izquierda crece y el centro se RECORRE a
+       la derecha en vez de encimarse. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    column-gap: 14px;
     padding: 2px 24px;
     border: 2px solid var(--ink);
     border-radius: 999px;
     background: var(--bg);
+}
+
+/* Zona central: "Bultos" + número. */
+.contador-centro {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+}
+
+/* Hueco derecho invisible (tercera columna): equilibra al código. */
+.contador-spacer {
+    min-width: 0;
 }
 
 .contador-etiqueta {
@@ -207,6 +224,20 @@ body {
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--muted);
+}
+
+/* Código identificador de la envasadora (del .env). Mismo estilo neutro del
+   dashboard: píldora discreta a la izquierda de "Bultos", sin color propio. */
+.contador-codigo {
+    /* Primera columna del grid. Sin min-width:0 a propósito: así la columna
+       mide al menos el texto completo y empuja el centro si es largo. */
+    justify-self: start;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--ink);
+    white-space: nowrap;
+    text-transform: uppercase;
 }
 
 .contador-num {

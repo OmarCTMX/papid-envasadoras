@@ -30,7 +30,7 @@ const personalAdmin = `{
 }`
 
 func servidor(token string) (*httptest.Server, *store.Store) {
-	st := store.New("B2-A-silo-1", 2)
+	st := store.New("B2-A-silo-1", 2, nil)
 	mux := http.NewServeMux()
 	New(st, token, nil).Registrar(mux)
 	return httptest.NewServer(mux), st

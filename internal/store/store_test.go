@@ -22,9 +22,30 @@ func ordenPrueba() model.Orden {
 
 // TestBultosSeSumanDesdeLaOrden verifica que solo cuenten los bultos hechos
 // DESPUÉS de cargar la orden (el contador del PLC no tiene que reiniciarse) y
+// TestCodigoEnEstado verifica que el código de cada bola (del .env) viaje en
+// el estado, para que los reportes futuros sepan qué envasadora produjo qué.
+func TestCodigoEnEstado(t *testing.T) {
+	st := New("B2-A-silo-1", 3, []string{"ENV-A1", "ENV-A2", "ENV-A3"})
+	e := st.Estado()
+	if len(e.Valvuladoras) != 3 {
+		t.Fatalf("esperaba 3 valvuladoras, obtuve %d", len(e.Valvuladoras))
+	}
+	if e.Valvuladoras[0].Codigo != "ENV-A1" || e.Valvuladoras[2].Codigo != "ENV-A3" {
+		t.Fatalf("códigos mal asignados: %q, %q, %q",
+			e.Valvuladoras[0].Codigo, e.Valvuladoras[1].Codigo, e.Valvuladoras[2].Codigo)
+	}
+
+	// Menos códigos que bolas: las bolas sin código quedan en "".
+	st2 := New("B2-A-silo-1", 3, []string{"ENV-A1"})
+	e2 := st2.Estado()
+	if e2.Valvuladoras[0].Codigo != "ENV-A1" || e2.Valvuladoras[1].Codigo != "" {
+		t.Fatalf("faltante no quedó vacío: %+v", e2.Valvuladoras)
+	}
+}
+
 // que los lotes salgan de la suma de las envasadoras.
 func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 
 	// El PLC ya venía contando antes de la orden: 100 y 50 bultos.
 	st.AplicarProceso(proceso([]int{100, 50}, []float64{0, 0}))
@@ -63,7 +84,7 @@ func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
 // TestIDyPesoDelPLC verifica que si el PLC manda id_bulto y peso_bulto, la
 // tabla los usa.
 func TestIDyPesoDelPLC(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
 	st.AplicarOrden(ordenPrueba())
 
@@ -81,7 +102,7 @@ func TestIDyPesoDelPLC(t *testing.T) {
 // TestOrdenTerminadaYTope verifica que no se pase de noLotes y que se marque
 // la orden como terminada.
 func TestOrdenTerminadaYTope(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
 	st.AplicarOrden(ordenPrueba()) // 6 lotes de 3 bultos = 18
 
@@ -95,7 +116,7 @@ func TestOrdenTerminadaYTope(t *testing.T) {
 
 // TestOrdenNuevaReinicia verifica que una orden nueva reinicie bultos y tabla.
 func TestOrdenNuevaReinicia(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 	st.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
 	st.AplicarOrden(ordenPrueba())
 	st.AplicarProceso(proceso([]int{4, 0}, []float64{0, 0}))
@@ -115,7 +136,7 @@ func TestOrdenNuevaReinicia(t *testing.T) {
 // TestReinicioDelPLC verifica que si el contador del PLC baja (reinicio), no se
 // pierdan ni se resten bultos.
 func TestReinicioDelPLC(t *testing.T) {
-	st := New("B2-A-silo-1", 1)
+	st := New("B2-A-silo-1", 1, nil)
 	st.AplicarProceso(proceso([]int{50}, []float64{0}))
 	st.AplicarOrden(ordenPrueba())
 	st.AplicarProceso(proceso([]int{52}, []float64{0})) // +2
@@ -127,7 +148,7 @@ func TestReinicioDelPLC(t *testing.T) {
 
 // TestSinOrdenNoCuenta verifica que sin orden no se cuenten bultos.
 func TestSinOrdenNoCuenta(t *testing.T) {
-	st := New("B2-A-silo-1", 1)
+	st := New("B2-A-silo-1", 1, nil)
 	st.AplicarProceso(proceso([]int{1}, []float64{0}))
 	st.AplicarProceso(proceso([]int{5}, []float64{0}))
 	if b := st.Estado().BultosOrden; b != 0 {
@@ -138,14 +159,14 @@ func TestSinOrdenNoCuenta(t *testing.T) {
 // TestRestaurar verifica que el snapshot del KV regrese orden y contadores, y
 // que no pise una orden que llegó por POST antes.
 func TestRestaurar(t *testing.T) {
-	origen := New("B2-A-silo-1", 2)
+	origen := New("B2-A-silo-1", 2, nil)
 	origen.AplicarProceso(proceso([]int{0, 0}, []float64{0, 0}))
 	origen.AplicarOrden(ordenPrueba())
 	origen.AplicarPersonal([]model.Trabajador{{Nombre: "Omar"}})
 	origen.AplicarProceso(proceso([]int{2, 1}, []float64{0, 0}))
 	snap := origen.Snapshot()
 
-	nuevo := New("B2-A-silo-1", 2)
+	nuevo := New("B2-A-silo-1", 2, nil)
 	if !nuevo.Restaurar(snap) {
 		t.Fatal("debía restaurar")
 	}
@@ -167,7 +188,7 @@ func TestRestaurar(t *testing.T) {
 // TestEventoOrden verifica que onOrden se dispare con tiene_orden true al
 // cargar y false al quitar, y que NO se dispare con las lecturas del PLC.
 func TestEventoOrden(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 	var ultimo EventoOrden
 	n := 0
 	st.SetOnOrden(func(ev EventoOrden) { ultimo = ev; n++ })
@@ -194,7 +215,7 @@ func TestEventoOrden(t *testing.T) {
 // lista vacía deje sin personal, y que no dispare el evento de orden (el
 // personal no cambia la pantalla; eso lo decide el status del emitter).
 func TestAplicarPersonal(t *testing.T) {
-	st := New("B2-A-silo-1", 2)
+	st := New("B2-A-silo-1", 2, nil)
 	nOrden := 0
 	st.SetOnOrden(func(EventoOrden) { nOrden++ })
 

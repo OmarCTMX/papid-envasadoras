@@ -56,6 +56,9 @@
     //  Configuración inyectada por el servidor.
     // ============================================================
     const NUM_VALVULADORAS = {{.NumEnvasadoras}};
+    // Código identificador de cada bola (del .env, CODIGOS_ENVASADORAS). Solo
+    // informativo: se muestra junto a los bultos. Puede venir vacío por bola.
+    const CODIGOS_VALVULADORAS = [{{range $i, $c := .Codigos}}{{if $i}},{{end}}"{{$c}}"{{end}}];
 
     // ============================================================
     //  Construcción de las tres tarjetas (una sola vez).
@@ -85,10 +88,18 @@
         card.className = 'valvuladora';
         card.innerHTML =
             '<div class="bola"><div class="bola-chart" id="bola-' + indice + '"></div></div>' +
-            // Contador de bultos de la orden (hasta 4 dígitos).
+            // Contador de bultos. Tres zonas: código (izquierda), "Bultos + número"
+            // (centro, centrado por defecto) y un hueco invisible (derecha) del
+            // mismo peso que el código. Si el código es largo, el centro se
+            // recorre a la derecha en vez de encimarse. El código se escribe con
+            // textContent más abajo (no innerHTML).
             '<div class="contador">' +
-                '<span class="contador-etiqueta">Bultos</span>' +
-                '<span class="contador-num" id="bultos-' + indice + '">0</span>' +
+                '<span class="contador-codigo" title="Identificador de la envasadora"></span>' +
+                '<div class="contador-centro">' +
+                    '<span class="contador-etiqueta">Bultos</span>' +
+                    '<span class="contador-num" id="bultos-' + indice + '">0</span>' +
+                '</div>' +
+                '<span class="contador-spacer"></span>' +
             '</div>' +
             '<div class="inferior">' +
                 // Izquierda: LEDs en vertical (solo visuales, del PLC) + valores.
@@ -115,6 +126,13 @@
                 '</div>' +
             '</div>';
         contenedor.appendChild(card);
+
+        // El código va con textContent (no innerHTML) para no inyectar HTML.
+        const codigo = CODIGOS_VALVULADORAS[indice];
+        if (codigo) {
+            const pill = card.querySelector('.contador-codigo');
+            if (pill) pill.textContent = codigo;
+        }
 
         const chart = echarts.init(document.getElementById('bola-' + indice));
         ultimo.push({ peso: 0, tope: 0 });

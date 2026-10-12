@@ -28,10 +28,11 @@ func New(dirTemplates string) (*Renderer, error) {
 
 // DatosIndex son los valores que se inyectan en la plantilla al cargar la página.
 type DatosIndex struct {
-	Titulo         string // título de la pestaña del navegador
-	Maquina        string // nombre visible de la envasadora (footer)
-	Version        string // marca de versión para invalidar el caché del CSS
-	NumEnvasadoras int    // cuántas bolas/envasadoras muestra este silo (2 o 3)
+	Titulo         string   // título de la pestaña del navegador
+	Maquina        string   // nombre visible de la envasadora (footer)
+	Version        string   // marca de versión para invalidar el caché del CSS
+	NumEnvasadoras int      // cuántas bolas/envasadoras muestra este silo (2 o 3)
+	Codigos        []string // identificador de cada bola (CODIGOS_ENVASADORAS), en orden
 }
 
 // Index renderiza la página completa.

@@ -35,7 +35,8 @@ const maxFilasPorMensaje = 5
 type Store struct {
 	mu          sync.RWMutex
 	machineCode string
-	n           int // número de envasadoras (bolas) del silo
+	n           int      // número de envasadoras (bolas) del silo
+	codigos     []string // identificador de cada bola (del .env), por índice
 
 	orden        *model.Orden
 	trabajadores []model.Trabajador
@@ -64,12 +65,18 @@ type EventoOrden struct {
 	LotesTotales int    `json:"lotes_totales,omitempty"`
 }
 
-// New crea un store vacío para un silo con n envasadoras.
-func New(machineCode string, n int) *Store {
+// New crea un store vacío para un silo con n envasadoras. codigos son los
+// identificadores de cada bola (del .env); se ajustan a n (faltantes "", el
+// resto se ignora) y se incluyen en cada Valvuladora del estado.
+func New(machineCode string, n int, codigos []string) *Store {
 	if n <= 0 {
 		n = model.DefaultEnvasadoras
 	}
-	s := &Store{machineCode: machineCode, n: n}
+	cods := make([]string, n)
+	for i := 0; i < n && i < len(codigos); i++ {
+		cods[i] = codigos[i]
+	}
+	s := &Store{machineCode: machineCode, n: n, codigos: cods}
 	s.limpiarContadores()
 	for i := range s.ultimoPLC {
 		s.ultimoPLC[i] = -1
@@ -353,6 +360,9 @@ func (s *Store) Estado() model.Estado {
 		v.Bultos = s.bultosOrden[i] // lo que ve el operador: bultos de la orden
 		v.IDBulto, v.PesoBulto = "", 0
 		v.Registros = s.registros[i]
+		if i < len(s.codigos) {
+			v.Codigo = s.codigos[i] // identificador fijo de la bola (del .env)
+		}
 		e.Valvuladoras[i] = v
 		total += s.bultosOrden[i]
 	}
