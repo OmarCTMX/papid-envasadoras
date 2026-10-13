@@ -74,8 +74,25 @@ func main() {
 		log.Fatalf("[dashboard] Error cargando plantillas: %v", err)
 	}
 
-	broker.SetOnConnect(func() sse.Evento {
-		return sse.Evento{Nombre: "estado", Data: renderer.EstadoJSON(st.Estado())}
+	// natsOK refleja si el dashboard tiene conexión viva a NATS. El navegador
+	// lo usa para distinguir "En vivo" (hay datos del PLC/emitter) de "Sin
+	// datos" (el dashboard está, pero NATS cayó). Arranca en false.
+	var natsOK atomic.Bool
+	eventoNATS := func() sse.Evento {
+		estado := "false"
+		if natsOK.Load() {
+			estado = "true"
+		}
+		return sse.Evento{Nombre: "nats", Data: `{"conectado":` + estado + `}`}
+	}
+
+	// Al conectar un navegador: le damos el estado actual Y el estado de NATS,
+	// para que el footer no quede mal hasta el próximo cambio.
+	broker.SetOnConnect(func() []sse.Evento {
+		return []sse.Evento{
+			{Nombre: "estado", Data: renderer.EstadoJSON(st.Estado())},
+			eventoNATS(),
+		}
 	})
 	st.SetOnChange(func() {
 		broker.Publicar(sse.Evento{Nombre: "estado", Data: renderer.EstadoJSON(st.Estado())})
@@ -184,7 +201,13 @@ func main() {
 		Pass:        os.Getenv("NATS_PASS"),
 		MachineCode: machineCode,
 	}
-	if conn, err := natsclient.Conectar(cfgNats, alConectar); err != nil {
+	// onEstadoNATS actualiza la bandera y empuja el estado a las pantallas en
+	// vivo (sin refresh), para que el footer sepa si hay datos del PLC/emitter.
+	onEstadoNATS := func(conectado bool) {
+		natsOK.Store(conectado)
+		broker.Publicar(eventoNATS())
+	}
+	if conn, err := natsclient.Conectar(cfgNats, alConectar, onEstadoNATS); err != nil {
 		log.Printf("[dashboard] No se pudo conectar a NATS: %v (el dashboard sigue funcionando)", err)
 	} else {
 		nc = conn

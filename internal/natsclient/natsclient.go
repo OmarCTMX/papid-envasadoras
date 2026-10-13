@@ -39,7 +39,16 @@ func (c Config) Subject() string {
 // onConectado se llama UNA vez, cuando la primera conexión se establece
 // (de inmediato o más tarde si NATS no estaba disponible al arrancar). Sirve
 // para restaurar el estado guardado en el KV.
-func Conectar(cfg Config, onConectado func(*nats.Conn)) (*nats.Conn, error) {
+//
+// onEstado (opcional, puede ser nil) se llama con true cuando NATS está
+// conectado y con false cuando se desconecta. Sirve para avisar a la pantalla
+// (por SSE) si el dashboard tiene o no datos en vivo del PLC/emitter.
+func Conectar(cfg Config, onConectado func(*nats.Conn), onEstado func(bool)) (*nats.Conn, error) {
+	avisar := func(conectado bool) {
+		if onEstado != nil {
+			onEstado(conectado)
+		}
+	}
 	opts := []nats.Option{
 		nats.Name("dashboard-envasadoras"),
 		// Servicio 24/7: reintentar la reconexión INDEFINIDAMENTE.
@@ -51,18 +60,22 @@ func Conectar(cfg Config, onConectado func(*nats.Conn)) (*nats.Conn, error) {
 		nats.RetryOnFailedConnect(true),
 		nats.ConnectHandler(func(c *nats.Conn) {
 			log.Printf("[nats] Conectado a %s", c.ConnectedUrl())
+			avisar(true)
 			if onConectado != nil {
 				onConectado(c)
 			}
 		}),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			log.Printf("[nats] Desconectado: %v (reintentando...)", err)
+			avisar(false)
 		}),
 		nats.ReconnectHandler(func(c *nats.Conn) {
 			log.Printf("[nats] Reconectado a %s", c.ConnectedUrl())
+			avisar(true)
 		}),
 		nats.ClosedHandler(func(_ *nats.Conn) {
 			log.Println("[nats] Conexión cerrada definitivamente")
+			avisar(false)
 		}),
 		nats.ErrorHandler(func(_ *nats.Conn, s *nats.Subscription, err error) {
 			subject := ""
