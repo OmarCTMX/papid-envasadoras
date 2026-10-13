@@ -165,20 +165,28 @@
                 type: 'liquidFill',
                 radius: '95%',
                 center: ['50%', '50%'],
-                data: [fraccion, fraccion - 0.06],   // dos olas para dar profundidad
-                // Olas/agua en gris.
-                color: ['#b0aca4', '#8f8b83'],
+                // Una sola capa de líquido: superficie plana y quieta (estilo
+                // tranquilo). Los MISMOS colores grises de antes, ahora en un
+                // degradado vertical suave: claro arriba -> gris abajo.
+                data: [fraccion],
+                color: [{
+                    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                    colorStops: [
+                        { offset: 0, color: '#c4c0b8' },   // superficie (gris claro)
+                        { offset: 1, color: '#8f8b83' }    // fondo (gris, el de antes)
+                    ]
+                }],
                 backgroundStyle: {
                     color: '#f3efe6',
-                    // Único contorno naranja (el de la bola).
+                    // Contorno naranja (el de la bola), igual que antes.
                     borderColor: '#ee8935',
                     borderWidth: 5
                 },
-                // Sin anillo exterior: antes había dos círculos naranjas (el
-                // outline y el borde del fondo). Dejamos solo el del fondo.
                 outline: { show: false },
-                amplitude: 6,
-                waveLength: '80%',
+                // Superficie plana y sin movimiento: líquido "tranquilo".
+                amplitude: 0,
+                waveLength: '100%',
+                waveAnimation: false,
                 label: {
                     // El texto es el PESO REAL del MQTT (no un porcentaje), con
                     // 1 decimal. No se redondea a entero: el peso puede traer
