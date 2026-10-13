@@ -209,6 +209,28 @@ body {
     transition: height 0.6s ease-out;
 }
 
+/* Ola estática tipo "onda S": sube de un lado y baja del otro (como un seno),
+   no una cresta simétrica. Es un SVG de fondo pegado al borde superior del
+   agua, asomando hacia ARRIBA. Al llegar al 100% la cresta sale del círculo
+   (overflow:hidden) y se ve lleno completo. Sin animación: barato en la NUC.
+   El color #c4c0b8 empata con la superficie del agua. */
+.bola-agua::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -18px;               /* qué tanto asoma la ola por encima del nivel */
+    width: 100%;
+    height: 20px;             /* alto de la ola */
+    background: #c4c0b8;
+    /* La curva: sube a la izquierda, baja a la derecha. */
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 20 L0 10 C 25 -6 75 26 100 10 L100 20 Z' fill='%23000'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 20 L0 10 C 25 -6 75 26 100 10 L100 20 Z' fill='%23000'/%3E%3C/svg%3E");
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+
 /* El número va por encima del agua, centrado. */
 .bola-texto {
     position: relative;
@@ -222,13 +244,15 @@ body {
 }
 
 .bola-peso {
-    /* Escala con el alto de la tarjeta, como antes el número de ECharts. */
-    font-size: clamp(2rem, 11vh, 5rem);
+    /* Tamaño del número dentro de la bola. clamp(mínimo, preferido, máximo):
+       usa el preferido (vh = % del alto de la ventana) pero no baja del mínimo
+       ni pasa del máximo. Sube estos valores si lo quieres más grande. */
+    font-size: clamp(3rem, 18vh, 8rem);
     line-height: 1;
 }
 
 .bola-unidad {
-    font-size: clamp(0.9rem, 3.4vh, 1.6rem);
+    font-size: clamp(1.2rem, 5vh, 2.6rem);
 }
 
 /* ============================================================

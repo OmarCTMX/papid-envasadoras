@@ -33,10 +33,10 @@ mqtt:
 #             {"name":"b2-b-v1","quality":"good","timestamp":"...","value":20}
 valvuladoras:
   - codigo: "b2-b-v1"
-    peso_topic: "plc/s7/b2-b-v1"
+    peso_topic: "plc/s7/b2-a-v9"
     #peso_topic: "plc/s7/b2-b-v8
   - codigo: "b2-b-v2"
-    peso_topic: "plc/s7/b2-b-v2"
+    peso_topic: "plc/s7/b2-a-v8"
     #peso_topic: "plc/s7/b2-b-v9
   - codigo: "b2-b-v3"
     peso_topic: "plc/s7/b2-b-v3"
