@@ -123,7 +123,9 @@ func TestDeletePersonal(t *testing.T) {
 	}
 }
 
-func TestDeleteOrdenQuitaPersonal(t *testing.T) {
+// TestDeleteOrdenConservaPersonal: DELETE /api/orden quita SOLO la orden; el
+// personal se queda.
+func TestDeleteOrdenConservaPersonal(t *testing.T) {
 	srv, st := servidor("")
 	defer srv.Close()
 	post(t, srv.URL, ordenAdmin, "")
@@ -134,8 +136,28 @@ func TestDeleteOrdenQuitaPersonal(t *testing.T) {
 	res.Body.Close()
 
 	e := st.Estado()
+	if st.TieneOrden() {
+		t.Fatal("DELETE /api/orden debía quitar la orden")
+	}
+	if len(e.Trabajadores) != 2 {
+		t.Fatalf("DELETE /api/orden NO debía tocar el personal: %+v", e.Trabajadores)
+	}
+}
+
+// TestDeleteQuitarTodo: DELETE /api/quitar-todo quita la orden Y el personal.
+func TestDeleteQuitarTodo(t *testing.T) {
+	srv, st := servidor("")
+	defer srv.Close()
+	post(t, srv.URL, ordenAdmin, "")
+	postA(t, srv.URL+"/api/personal", personalAdmin, "")
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/quitar-todo", nil)
+	res, _ := http.DefaultClient.Do(req)
+	res.Body.Close()
+
+	e := st.Estado()
 	if st.TieneOrden() || len(e.Trabajadores) != 0 {
-		t.Fatalf("DELETE /api/orden debía quitar orden Y personal: orden=%v personal=%+v",
+		t.Fatalf("DELETE /api/quitar-todo debía quitar orden Y personal: orden=%v personal=%+v",
 			st.TieneOrden(), e.Trabajadores)
 	}
 }

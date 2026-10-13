@@ -1,12 +1,13 @@
 // Package api expone la API REST del dashboard del silo:
 //
-//	POST   /api/orden     → el admin carga la orden (reinicia contadores)
-//	GET    /api/orden     → orden actual, personal y avance (bultos / lotes)
-//	DELETE /api/orden     → quita la orden Y el personal (pantalla en blanco)
-//	POST   /api/personal  → reemplaza la lista de personal (lista vacía la vacía)
-//	DELETE /api/personal  → vacía el personal (no toca la orden)
-//	GET    /api/estado    → estado completo que ve la pantalla
-//	GET    /docs          → documentación interactiva (Scalar, sin internet)
+//	POST   /api/orden        → el admin carga la orden (reinicia contadores)
+//	GET    /api/orden        → orden actual, personal y avance (bultos / lotes)
+//	DELETE /api/orden        → quita SOLO la orden (conserva el personal)
+//	DELETE /api/quitar-todo  → quita la orden Y el personal a la vez
+//	POST   /api/personal     → reemplaza la lista de personal (lista vacía la vacía)
+//	DELETE /api/personal     → vacía el personal (no toca la orden)
+//	GET    /api/estado       → estado completo que ve la pantalla
+//	GET    /docs             → documentación interactiva (Scalar, sin internet)
 //
 // Si API_TOKEN está definido, POST y DELETE exigen el header
 // "Authorization: Bearer <token>" (o "X-API-Token: <token>"). Sin token, la
@@ -63,6 +64,7 @@ func (a *API) Registrar(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/orden/emitter", a.autenticado(a.deleteOrdenEmitter))
 	mux.HandleFunc("POST /api/personal", a.autenticado(a.postPersonal))
 	mux.HandleFunc("DELETE /api/personal", a.autenticado(a.deletePersonal))
+	mux.HandleFunc("DELETE /api/quitar-todo", a.autenticado(a.deleteTodo))
 	mux.HandleFunc("GET /api/estado", a.getEstado)
 	mux.HandleFunc("GET /api/control", a.getControl)
 	mux.HandleFunc("GET /api/openapi.json", a.openapi)
@@ -218,10 +220,20 @@ func (a *API) getOrden(w http.ResponseWriter, r *http.Request) {
 	escribirJSON(w, http.StatusOK, a.respuestaOrden(""))
 }
 
+// deleteOrden quita SOLO la orden (conserva el personal). Vuelve a Dashboard
+// Personal porque QuitarOrden dispara el aviso de orden.
 func (a *API) deleteOrden(w http.ResponseWriter, r *http.Request) {
 	a.st.QuitarOrden()
-	log.Printf("[api] Orden quitada")
+	log.Printf("[api] Orden quitada (personal intacto)")
 	escribirJSON(w, http.StatusOK, a.respuestaOrden("Orden quitada"))
+}
+
+// deleteTodo quita la orden Y el personal a la vez. También vuelve a Dashboard
+// Personal (QuitarTodo dispara el aviso de orden).
+func (a *API) deleteTodo(w http.ResponseWriter, r *http.Request) {
+	a.st.QuitarTodo()
+	log.Printf("[api] Orden y personal quitados")
+	escribirJSON(w, http.StatusOK, a.respuestaOrden("Orden y personal quitados"))
 }
 
 func (a *API) getEstado(w http.ResponseWriter, r *http.Request) {

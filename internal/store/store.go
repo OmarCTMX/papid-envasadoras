@@ -213,9 +213,25 @@ func (s *Store) AplicarPersonal(trabajadores []model.Trabajador) {
 	s.notificar()
 }
 
-// QuitarOrden borra la orden, el personal y los contadores (fin de orden,
-// reseteo diario o DELETE /api/orden).
+// QuitarOrden borra SOLO la orden y los contadores; CONSERVA el personal
+// (DELETE /api/orden). Dispara el aviso de orden, así el cambio de pantalla
+// regresa a Dashboard Personal.
 func (s *Store) QuitarOrden() {
+	s.mu.Lock()
+	s.orden = nil
+	s.limpiarContadores()
+	snap := s.snapshotLocked()
+	s.mu.Unlock()
+
+	s.guardar(snap)
+	s.avisarOrden()
+	s.notificar()
+}
+
+// QuitarTodo borra la orden, el personal y los contadores a la vez
+// (DELETE /api/quitar-todo, reseteo diario o fin de turno). También dispara el
+// aviso de orden, así regresa a Dashboard Personal.
+func (s *Store) QuitarTodo() {
 	s.mu.Lock()
 	s.orden = nil
 	s.trabajadores = []model.Trabajador{}

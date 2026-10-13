@@ -114,8 +114,19 @@
         }
       },
       "delete": {
-        "summary": "Quitar la orden y el personal",
-        "description": "Deja la pantalla sin orden, los contadores en cero y vacía el personal.",
+        "summary": "Quitar SOLO la orden",
+        "description": "Deja la pantalla sin orden y los contadores en cero. CONSERVA el personal. Regresa a Dashboard Personal (publica tiene_orden:false).",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "Orden quitada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },
+          "401": { "description": "Token inválido o ausente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/quitar-todo": {
+      "delete": {
+        "summary": "Quitar la orden Y el personal",
+        "description": "Borra la orden, el personal y los contadores a la vez. Regresa a Dashboard Personal (publica tiene_orden:false).",
         "security": [{ "token": [] }],
         "responses": {
           "200": { "description": "Orden y personal quitados", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespuestaOrden" } } } },

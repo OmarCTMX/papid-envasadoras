@@ -194,8 +194,9 @@ func main() {
 	}
 
 	// --- Reseteo diario ---
+	// Al cambio de turno se borra TODO (orden + personal + contadores).
 	iniciarResetDiario(os.Getenv("RESET_HORA"), func() {
-		st.QuitarOrden()
+		st.QuitarTodo()
 		log.Println("[dashboard] Reseteo diario: orden, personal y contadores en cero")
 	})
 
