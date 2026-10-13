@@ -404,11 +404,25 @@
     const elReloj = document.getElementById('estado-reloj');
     const elConexion = document.getElementById('estado-conexion');
 
-    // El nombre de la máquina reemplaza al texto "En vivo/Offline" y toma el
-    // color del estado (lo aplica el CSS según la clase online/offline).
-    function marcarConexion(enVivo) {
-        elConexion.classList.toggle('online', enVivo);
-        elConexion.classList.toggle('offline', !enVivo);
+    // Hay DOS conexiones que vigilar, y las dos se detectan en vivo:
+    //   sseVivo  = navegador ↔ dashboard (el stream SSE). Si se cae, el
+    //              dashboard es inalcanzable → "Offline".
+    //   natsVivo = dashboard ↔ NATS (lo avisa el servidor por el evento 'nats').
+    //              Si se cae, el dashboard sigue pero NO llegan datos del
+    //              PLC/emitter → "Sin datos".
+    // "En vivo" solo cuando AMBAS están bien.
+    let sseVivo = false;
+    let natsVivo = false;
+
+    function pintarEstado() {
+        const ok = sseVivo && natsVivo;
+        elConexion.classList.toggle('online', ok);
+        elConexion.classList.toggle('offline', !ok);
+        // title = texto al pasar el mouse, para distinguir el motivo sin saturar
+        // el footer (que muestra el nombre de la máquina).
+        if (!sseVivo) elConexion.title = 'Offline: sin conexión con el dashboard';
+        else if (!natsVivo) elConexion.title = 'Sin datos: el dashboard no tiene NATS (no llega el PLC)';
+        else elConexion.title = 'En vivo';
     }
 
     function tick() {
@@ -419,12 +433,24 @@
 
     evtSource.onopen = function () {
         console.log('%c[SSE] Conexión abierta', 'color: green; font-weight: bold');
-        marcarConexion(true);
+        sseVivo = true;
+        pintarEstado();
     };
     evtSource.onerror = function () {
         // readyState 0 = reconectando, 2 = cerrada. En ambos no hay stream vivo.
-        marcarConexion(false);
+        sseVivo = false;
+        pintarEstado();
     };
+
+    // El servidor avisa el estado de NATS: {"conectado": true/false}.
+    evtSource.addEventListener('nats', function (e) {
+        try {
+            natsVivo = !!JSON.parse(e.data).conectado;
+        } catch (err) {
+            natsVivo = false;
+        }
+        pintarEstado();
+    });
     </script>
 </body>
 </html>

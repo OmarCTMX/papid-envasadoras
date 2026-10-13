@@ -77,7 +77,8 @@
             <div class="fuente">Fuente: POST /api/orden (admin)</div>
             <div id="api-body"><div class="vacio">Cargando…</div></div>
             <div class="acciones">
-                <button id="btn-del-api" class="danger">Quitar orden de la API</button>
+                <button id="btn-del-orden" class="danger">Quitar orden</button>
+                <button id="btn-del-personal" class="danger">Quitar personal</button>
             </div>
         </section>
     </div>
@@ -108,9 +109,20 @@
 
     function pintarApi(api) {
         const o = api.orden;
-        if (!o) { $('api-body').innerHTML = '<div class="vacio">Sin orden en la API</div>'; $('dot-api').className = 'dot off'; $('btn-del-api').disabled = true; return; }
+        const hayPersonal = !!(api.personal && api.personal.length);
+        // El botón de personal se habilita si hay personal, aunque no haya orden.
+        $('btn-del-personal').disabled = !hayPersonal;
+
+        if (!o) {
+            $('api-body').innerHTML = hayPersonal
+                ? ('<div class="vacio">Sin orden en la API</div>' + pintarPersonal(api.personal))
+                : '<div class="vacio">Sin orden en la API</div>';
+            $('dot-api').className = 'dot off';
+            $('btn-del-orden').disabled = true;
+            return;
+        }
         $('dot-api').className = 'dot on';
-        $('btn-del-api').disabled = false;
+        $('btn-del-orden').disabled = false;
         const a = api.avance || {};
         let h = '';
         h += campo('OF (docNum)', o.doc_num);
@@ -170,7 +182,8 @@
         }
     }
 
-    $('btn-del-api').onclick = () => borrar('/api/orden', 'Quitar la orden de la API');
+    $('btn-del-orden').onclick = () => borrar('/api/orden', 'Quitar la orden (se conserva el personal)');
+    $('btn-del-personal').onclick = () => borrar('/api/personal', 'Quitar el personal (se conserva la orden)');
     $('btn-del-emitter').onclick = () => borrar('/api/orden/emitter', 'Pedir al emitter que quite la orden (unsigned)');
     $('btn-refrescar').onclick = cargar;
 

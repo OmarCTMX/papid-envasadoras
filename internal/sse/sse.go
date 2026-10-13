@@ -30,16 +30,17 @@ type Evento struct {
 type Broker struct {
 	mu        sync.Mutex
 	clients   map[chan Evento]bool
-	onConnect func() Evento // si está definido, se envía al nuevo cliente al conectarse
+	onConnect func() []Evento // si está definido, sus eventos se envían al nuevo cliente al conectarse
 }
 
 func New() *Broker {
 	return &Broker{clients: make(map[chan Evento]bool)}
 }
 
-// SetOnConnect registra el evento que se envía inmediatamente a cada nuevo
-// cliente SSE al conectarse (para enviar el estado actual en el refresh).
-func (b *Broker) SetOnConnect(fn func() Evento) {
+// SetOnConnect registra los eventos que se envían inmediatamente a cada nuevo
+// cliente SSE al conectarse (para darle el estado actual sin esperar el próximo
+// cambio). Puede devolver varios (ej. estado + estado de NATS).
+func (b *Broker) SetOnConnect(fn func() []Evento) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.onConnect = fn
@@ -120,10 +121,13 @@ func (b *Broker) Handler(w http.ResponseWriter, r *http.Request) {
 		return rc.Flush() == nil
 	}
 
-	// Si hay un evento inicial configurado, se lo enviamos al nuevo cliente
+	// Si hay eventos iniciales configurados, se los enviamos al nuevo cliente
 	// de inmediato para que vea el estado actual sin esperar el próximo cambio.
 	if onConnect != nil {
-		if ev := onConnect(); ev.Nombre != "" {
+		for _, ev := range onConnect() {
+			if ev.Nombre == "" {
+				continue
+			}
 			if !escribir(ev) {
 				return
 			}
