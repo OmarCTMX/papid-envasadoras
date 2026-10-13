@@ -7,9 +7,8 @@
     <!-- ?v={{.Version}} invalida el caché del navegador en cada reinicio del
          servidor, para que las NUC no se queden con un CSS viejo. -->
     <link rel="stylesheet" href="/static/styles.css?v={{.Version}}">
-    <!-- ECharts + plugin liquidFill vendorizados localmente (sin internet). -->
-    <script src="/static/vendor/echarts.min.js"></script>
-    <script src="/static/vendor/echarts-liquidfill.min.js"></script>
+    <!-- Las bolas se dibujan con CSS puro (sin ECharts/canvas): más ligero y
+         fluido en pantallas sin GPU como las NUC. -->
 </head>
 <body>
     <!-- ============ HEADER: OF / item / lote ============ -->
@@ -69,10 +68,6 @@
     //  que se ve es el PESO directo (en kg).
     // ============================================================
     const contenedor = document.getElementById('envasadora');
-    const charts = [];   // instancias ECharts, una por valvuladora
-    // Último peso/tope de cada bola: se re-dibuja con ellos al cambiar de
-    // tamaño, para que el número escale con la bola.
-    const ultimo = [];
 
     // Fila de un LED (botón + etiqueta a la derecha). El id va en .led-item,
     // que es el que recibe la clase .on.
@@ -87,7 +82,18 @@
         const card = document.createElement('section');
         card.className = 'valvuladora';
         card.innerHTML =
-            '<div class="bola"><div class="bola-chart" id="bola-' + indice + '"></div></div>' +
+            // Bola con CSS puro (sin ECharts): un círculo con una capa de agua
+            // cuya altura es el % de llenado. La transición CSS da el movimiento
+            // suave sin repintar un canvas (clave en la NUC sin GPU).
+            '<div class="bola">' +
+                '<div class="bola-circulo" id="bola-' + indice + '">' +
+                    '<div class="bola-agua" id="agua-' + indice + '"></div>' +
+                    '<div class="bola-texto">' +
+                        '<span class="bola-peso" id="peso-' + indice + '">0.0</span>' +
+                        '<span class="bola-unidad">kg</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
             // Contador de bultos. Tres zonas: código (izquierda), "Bultos + número"
             // (centro, centrado por defecto) y un hueco invisible (derecha) del
             // mismo peso que el código. Si el código es largo, el centro se
@@ -134,136 +140,24 @@
             if (pill) pill.textContent = codigo;
         }
 
-        const chart = echarts.init(document.getElementById('bola-' + indice));
-        ultimo.push({ peso: 0, tope: 0 });
-        charts.push(chart);
-        dibujarBola(indice);
         pintarTabla(indice, []);
     }
 
-    // dibujarBola aplica el último peso/tope a la bola i, calculando el tamaño
-    // del número a partir del tamaño real de la bola (así no se sale del
-    // círculo cuando la tarjeta es más chica).
-    function dibujarBola(i) {
-        const c = charts[i];
-        const lado = Math.min(c.getWidth(), c.getHeight()) || 300;
-        c.setOption(opcionesLiquidFill(ultimo[i].peso, ultimo[i].tope, lado));
-    }
-
-    // Opciones del liquidFill. El 100% de llenado es el PESO_PRODUCTO de la
-    // orden (mismo para las 3 bolas): la fracción de agua es peso/pesoProducto
-    // (acotada a 0..1). El label muestra el peso directo en kg. Si el tope es 0
-    // o no llega, la bola queda vacía (no se divide entre cero).
-    // `lado` es el tamaño de la bola en px: el número mide ~1/3 de ese lado.
-    function opcionesLiquidFill(peso, pesoProducto, lado) {
-        const tope = pesoProducto > 0 ? pesoProducto : 0;
+    // dibujarBola actualiza la bola i con CSS: la altura del agua = % de
+    // llenado (peso/tope, acotado 0..1) y el texto = peso real con 1 decimal.
+    // La transición suave la hace el CSS (height), no JS por frame: barato en
+    // una NUC sin GPU. Si el tope es 0 (sin orden), la bola queda vacía.
+    function dibujarBola(i, peso, tope) {
         const fraccion = tope > 0 ? Math.max(0, Math.min(1, peso / tope)) : 0;
-        const fPeso = Math.max(28, Math.round(lado * 0.33));
-        const fUnidad = Math.max(12, Math.round(fPeso * 0.31));
-        return {
-            series: [{
-                type: 'liquidFill',
-                radius: '95%',
-                center: ['50%', '50%'],
-                // Una sola capa de líquido: superficie plana y quieta (estilo
-                // tranquilo). Los MISMOS colores grises de antes, ahora en un
-                // degradado vertical suave: claro arriba -> gris abajo.
-                data: [fraccion],
-                color: [{
-                    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                    colorStops: [
-                        { offset: 0, color: '#c4c0b8' },   // superficie (gris claro)
-                        { offset: 1, color: '#8f8b83' }    // fondo (gris, el de antes)
-                    ]
-                }],
-                backgroundStyle: {
-                    color: '#f3efe6',
-                    // Contorno naranja (el de la bola), igual que antes.
-                    borderColor: '#ee8935',
-                    borderWidth: 5
-                },
-                outline: { show: false },
-                // Superficie plana y sin movimiento: líquido "tranquilo".
-                amplitude: 0,
-                waveLength: '100%',
-                waveAnimation: false,
-                label: {
-                    // El texto es el PESO REAL del MQTT (no un porcentaje), con
-                    // 1 decimal. No se redondea a entero: el peso puede traer
-                    // decimales (ej. 20.4 kg) y debe verse tal cual. La unidad
-                    // "kg" va en tamaño menor debajo, usando rich text.
-                    formatter: function () {
-                        return '{peso|' + peso.toFixed(1) + '}{unidad|kg}';
-                    },
-                    rich: {
-                        // Tamaños proporcionales a la bola (ver dibujarBola).
-                        peso: {
-                            fontSize: fPeso,
-                            fontWeight: 'bold',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            color: '#161412'
-                        },
-                        unidad: {
-                            fontSize: fUnidad,
-                            fontWeight: 'bold',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            color: '#161412',
-                            // Baja el "kg" para alinearlo con la base del número.
-                            padding: [Math.round(fPeso * 0.37), 0, 0, Math.round(fPeso * 0.05)]
-                        }
-                    },
-                    // insideColor aplica al texto que queda sobre el agua.
-                    insideColor: '#161412'
-                },
-                itemStyle: { opacity: 0.9 },
-                emphasis: { itemStyle: { opacity: 0.9 } }
-            }]
-        };
+        const agua = document.getElementById('agua-' + i);
+        const txt = document.getElementById('peso-' + i);
+        if (agua) agua.style.height = (fraccion * 100).toFixed(1) + '%';
+        if (txt) txt.textContent = peso.toFixed(1);
     }
 
     for (let i = 0; i < NUM_VALVULADORAS; i++) {
         crearValvuladora(i);
     }
-
-    // Redimensiona TODAS las bolas a su contenedor actual y re-dibuja el número
-    // con el tamaño nuevo.
-    function ajustarBolas() {
-        charts.forEach(function (c, i) { c.resize(); dibujarBola(i); });
-    }
-
-    // --- Arreglo del arranque ---
-    // Al hacer echarts.init el contenedor flex aún no tiene su tamaño final
-    // (la fuente puede estar cargando y el layout no se ha asentado), así que
-    // ECharts mide mal y las bolas se ven encimadas hasta el primer resize.
-    //
-    // Se ataca por tres frentes para no depender de mover la ventana:
-    //   1. Un ResizeObserver por bola: en cuanto su tarjeta toma tamaño (o
-    //      cambia), ECharts se reajusta solo. Cubre el caso general.
-    //   2. Un reajuste tras varios frames y a los 300ms, por si el observer
-    //      no dispara en algún navegador.
-    //   3. Un reajuste cuando terminan de cargar las fuentes (cambian métricas).
-    if (window.ResizeObserver) {
-        charts.forEach(function (c, i) {
-            const ro = new ResizeObserver(function () { c.resize(); dibujarBola(i); });
-            ro.observe(c.getDom());
-        });
-    }
-
-    // Reajustes escalonados tras el primer render.
-    requestAnimationFrame(function () {
-        requestAnimationFrame(ajustarBolas);
-    });
-    setTimeout(ajustarBolas, 100);
-    setTimeout(ajustarBolas, 300);
-    window.addEventListener('load', ajustarBolas);
-
-    // Cuando las fuentes terminan de cargar, las métricas cambian: reajustar.
-    if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(ajustarBolas);
-    }
-
-    // Redimensionar las bolas cuando cambia el tamaño de la ventana.
-    window.addEventListener('resize', ajustarBolas);
 
     // ============================================================
     //  Aplicar un estado completo a la UI (header + bolas + valores).
@@ -292,8 +186,7 @@
             const v = vals[i] || { peso: 0, setpoint: null, columna: null };
             // El llenado usa el peso_producto de la orden como 100% (igual para
             // las 3 bolas). El setpoint solo se muestra abajo.
-            ultimo[i] = { peso: v.peso || 0, tope: estado.peso_producto || 0 };
-            dibujarBola(i);
+            dibujarBola(i, v.peso || 0, estado.peso_producto || 0);
             document.getElementById('setpoint-' + i).textContent = fmt(v.setpoint);
             document.getElementById('columna-' + i).textContent = fmt(v.columna);
 
