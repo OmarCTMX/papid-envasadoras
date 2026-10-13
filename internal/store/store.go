@@ -246,6 +246,25 @@ func (s *Store) QuitarTodo() {
 
 // AplicarProceso recibe los datos del PLC. Actualiza peso/setpoint/columna/leds
 // y, si hay orden, convierte los incrementos del contador del PLC en bultos de
+// AplicarPeso actualiza SOLO el peso de la bola i (lo que hoy llega por MQTT).
+// No toca bultos, setpoint, columna ni LEDs: esos vendrán por otros topics en
+// el futuro. Ignora índices fuera de rango y pesos negativos.
+func (s *Store) AplicarPeso(i int, peso float64) {
+	if i < 0 || i >= s.n {
+		return
+	}
+	if peso < 0 {
+		peso = 0
+	}
+	s.mu.Lock()
+	// s.proceso guarda el último proceso del PLC; aquí solo tocamos el peso de
+	// esta bola. Normalizar garantiza que el slice tenga s.n posiciones.
+	s.proceso.Normalizar(s.n)
+	s.proceso.Valvuladoras[i].Peso = peso
+	s.mu.Unlock()
+	s.notificar()
+}
+
 // la orden y en filas de la tabla.
 func (s *Store) AplicarProceso(e model.Estado) {
 	e.Normalizar(s.n)

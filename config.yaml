@@ -1,0 +1,43 @@
+# Configuración del dashboard de envasadoras (por silo).
+#
+# Es la ÚNICA configuración del dashboard: servidor, NATS, MQTT y las
+# valvuladoras. Ya NO se usa el .env.
+
+# --- Servidor (general del dashboard) ---
+servidor:
+  port: "3000"                   # puerto web (default 3000)
+  machine_code: "B2-A-silo-2"    # código EXACTO del silo (obligatorio)
+  region: "Cotija"               # región (va en el título/header)
+  maquina: "B2-A Silo 2"         # nombre visible (footer/título)
+  reset_hora: "18:00"            # HH:MM del reseteo diario; vacío u "off" = sin reseteo
+  api_token: ""                  # token del POST/DELETE; vacío = API abierta
+
+# --- NATS (solo estado de conexión + aviso de orden al cambio de pantalla) ---
+nats:
+  url: "nats://192.168.90.156:4222"
+  usuario: "papid"
+  password: "papid2024"
+
+# --- Broker MQTT (de donde llega el peso de las bolas) ---
+mqtt:
+  broker: "192.168.90.101"   # IP o host del broker
+  puerto: 1883           # puerto MQTT (sin TLS)
+  usuario: ""            # vacío: el broker no requiere auth
+  password: ""
+  tls: false
+
+# --- Valvuladoras del silo, EN ORDEN (bola 1, bola 2, ...) ---
+# codigo:     identificador propio (se muestra junto a los bultos y va en los
+#             reportes). El payload del PLC trae este mismo valor en "name".
+# peso_topic: topic MQTT del que sale el peso. Del payload solo se usa "value":
+#             {"name":"b2-b-v1","quality":"good","timestamp":"...","value":20}
+valvuladoras:
+  - codigo: "b2-b-v1"
+    peso_topic: "plc/s7/b2-b-v1"
+    #peso_topic: "plc/s7/b2-b-v8
+  - codigo: "b2-b-v2"
+    peso_topic: "plc/s7/b2-b-v2"
+    #peso_topic: "plc/s7/b2-b-v9
+  - codigo: "b2-b-v3"
+    peso_topic: "plc/s7/b2-b-v3"
+    #peso_topic: "plc/s7/b2-b-v10

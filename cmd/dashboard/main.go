@@ -26,11 +26,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
 
 	"papid-envasadoras/internal/api"
+	"papid-envasadoras/internal/config"
 	"papid-envasadoras/internal/model"
+	"papid-envasadoras/internal/mqttclient"
 	"papid-envasadoras/internal/natsclient"
 	"papid-envasadoras/internal/persistence"
 	"papid-envasadoras/internal/render"
@@ -39,31 +40,19 @@ import (
 )
 
 func main() {
-	// Carga el .env (si existe); en Docker las variables llegan por el entorno.
-	if err := godotenv.Overload(); err != nil {
-		log.Println("[dashboard] No se encontró .env, se usan variables del entorno")
+	// config.yaml es la ÚNICA configuración del dashboard: servidor, NATS, MQTT
+	// y las valvuladoras. La ruta se puede sobreescribir con CONFIG_YAML (útil
+	// en Docker); por defecto "config.yaml" en el directorio de trabajo.
+	rutaConfig := getenv("CONFIG_YAML", "config.yaml")
+	cfg, err := config.Cargar(rutaConfig)
+	if err != nil {
+		log.Fatalf("[dashboard] No se pudo cargar %s: %v", rutaConfig, err)
 	}
 
-	port := getenv("PORT", "3000")
-	machineCode := strings.TrimSpace(os.Getenv("MACHINE_CODE"))
-	if machineCode == "" || strings.ContainsAny(machineCode, " \t*>") {
-		log.Fatalf("[dashboard] MACHINE_CODE inválido o vacío (%q). Ej: B2-A-silo-1", machineCode)
-	}
-
-	// Número de envasadoras (bolas) del silo: 2 en silos 1 y 4, 3 en 2 y 3.
-	numEnvasadoras := model.DefaultEnvasadoras
-	if v := os.Getenv("NUM_ENVASADORAS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			numEnvasadoras = n
-		} else {
-			log.Printf("[dashboard] NUM_ENVASADORAS inválido (%q), se usa %d", v, numEnvasadoras)
-		}
-	}
-
-	// Código identificador de cada bola (CODIGOS_ENVASADORAS del .env), en
-	// orden. Solo es informativo (se muestra junto a los bultos y viaja en el
-	// estado para reportes). Se ajusta a numEnvasadoras.
-	codigos := codigosEnvasadoras(os.Getenv("CODIGOS_ENVASADORAS"), numEnvasadoras)
+	port := cfg.Servidor.Port
+	machineCode := strings.TrimSpace(cfg.Servidor.MachineCode)
+	numEnvasadoras := cfg.NumValvuladoras()
+	codigos := cfg.Codigos()
 
 	// --- Componentes ---
 	st := store.New(machineCode, numEnvasadoras, codigos)
@@ -196,9 +185,9 @@ func main() {
 
 	// --- NATS ---
 	cfgNats := natsclient.Config{
-		URL:         getenv("NATS_URL", "nats://localhost:4222"),
-		User:        os.Getenv("NATS_USER"),
-		Pass:        os.Getenv("NATS_PASS"),
+		URL:         cfg.NATS.URL,
+		User:        cfg.NATS.Usuario,
+		Pass:        cfg.NATS.Password,
 		MachineCode: machineCode,
 	}
 	// onEstadoNATS actualiza la bandera y empuja el estado a las pantallas en
@@ -211,14 +200,28 @@ func main() {
 		log.Printf("[dashboard] No se pudo conectar a NATS: %v (el dashboard sigue funcionando)", err)
 	} else {
 		nc = conn
-		if _, err := natsclient.Suscribir(nc, cfgNats, st); err != nil {
-			log.Printf("[dashboard] No se pudo suscribir a NATS: %v", err)
-		}
+		// NOTA: el dashboard ya NO escucha el proceso por NATS. El peso de las
+		// bolas llega por MQTT (ver más abajo). NATS queda solo para el estado
+		// de conexión (footer) y el aviso de orden al cambio de pantalla.
 	}
+
+	// --- MQTT: peso de las bolas ---
+	// Es la fuente del proceso ahora. Se conecta al broker del config.yaml y
+	// actualiza el peso de cada bola según su topic. onEstado podría empujarse
+	// al footer en el futuro; por ahora solo se registra.
+	mqttCli := mqttclient.Nuevo(cfg, st, func(conectado bool) {
+		if conectado {
+			log.Printf("[dashboard] MQTT conectado (peso de las bolas)")
+		} else {
+			log.Printf("[dashboard] MQTT desconectado (sin peso de las bolas)")
+		}
+	})
+	mqttCli.Conectar()
+	defer mqttCli.Desconectar()
 
 	// --- Reseteo diario ---
 	// Al cambio de turno se borra TODO (orden + personal + contadores).
-	iniciarResetDiario(os.Getenv("RESET_HORA"), func() {
+	iniciarResetDiario(cfg.Servidor.ResetHora, func() {
 		st.QuitarTodo()
 		log.Println("[dashboard] Reseteo diario: orden, personal y contadores en cero")
 	})
@@ -226,16 +229,16 @@ func main() {
 	// --- HTTP ---
 	mux := http.NewServeMux()
 
-	token := os.Getenv("API_TOKEN")
+	token := cfg.Servidor.APIToken
 	if strings.TrimSpace(token) == "" {
-		log.Println("[dashboard] AVISO: API_TOKEN vacío, POST/DELETE /api/orden quedan SIN autenticación")
+		log.Println("[dashboard] AVISO: api_token vacío, POST/DELETE /api/orden quedan SIN autenticación")
 	}
 	ctrl := &controlEmitter{nc: nc, code: machineCode, emitterKV: &emitterKV}
 	api.New(st, token, ctrl).Registrar(mux)
 
 	datosIndex := render.DatosIndex{
-		Titulo:         construirTitulo(),
-		Maquina:        getenv("MAQUINA", machineCode),
+		Titulo:         construirTitulo(cfg.Servidor.Region, cfg.Servidor.Maquina),
+		Maquina:        cfg.Servidor.Maquina,
 		Version:        strconv.FormatInt(time.Now().Unix(), 10),
 		NumEnvasadoras: numEnvasadoras,
 		Codigos:        codigos,
@@ -329,42 +332,21 @@ func iniciarResetDiario(hora string, fn func()) {
 	}()
 }
 
-// construirTitulo arma "Envasadoras | REGION | MAQUINA".
-func construirTitulo() string {
+// construirTitulo arma "Envasadoras | REGION | MAQUINA" con los valores del
+// config.yaml. La región va en mayúsculas, igual que antes.
+func construirTitulo(region, maquina string) string {
 	partes := []string{"Envasadoras"}
-	if region := os.Getenv("REGION"); region != "" {
+	if region != "" {
 		partes = append(partes, strings.ToUpper(region))
 	}
-	if maquina := os.Getenv("MAQUINA"); maquina != "" {
+	if maquina != "" {
 		partes = append(partes, maquina)
 	}
 	return strings.Join(partes, " | ")
 }
 
-// codigosEnvasadoras parte CODIGOS_ENVASADORAS (lista separada por comas) y
-// devuelve exactamente n códigos, en orden. Si llegan menos, los faltantes
-// quedan en ""; si llegan más, se descartan los sobrantes. Es solo informativo:
-// el código de cada bola se muestra junto a los bultos y viaja en el estado.
-func codigosEnvasadoras(raw string, n int) []string {
-	out := make([]string, n)
-	if n <= 0 {
-		return out
-	}
-	i := 0
-	for _, parte := range strings.Split(raw, ",") {
-		if i >= n {
-			break
-		}
-		c := strings.TrimSpace(parte)
-		if c == "" {
-			continue
-		}
-		out[i] = c
-		i++
-	}
-	return out
-}
-
+// getenv devuelve la variable de entorno o el default. Se usa solo para
+// CONFIG_YAML (la ruta del archivo de configuración).
 func getenv(clave, def string) string {
 	if v := os.Getenv(clave); v != "" {
 		return v

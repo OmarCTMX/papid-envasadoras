@@ -44,6 +44,32 @@ func TestCodigoEnEstado(t *testing.T) {
 }
 
 // que los lotes salgan de la suma de las envasadoras.
+// TestAplicarPeso verifica que el peso de una bola (que hoy llega por MQTT) se
+// refleje en el estado, sin tocar las demás ni los bultos.
+func TestAplicarPeso(t *testing.T) {
+	st := New("B2-A-silo-1", 3, nil)
+	st.AplicarPeso(0, 7.4)
+	st.AplicarPeso(2, 12.0)
+
+	e := st.Estado()
+	if e.Valvuladoras[0].Peso != 7.4 {
+		t.Fatalf("bola 0 debía tener peso 7.4, tiene %v", e.Valvuladoras[0].Peso)
+	}
+	if e.Valvuladoras[1].Peso != 0 {
+		t.Fatalf("bola 1 no debía cambiar, tiene %v", e.Valvuladoras[1].Peso)
+	}
+	if e.Valvuladoras[2].Peso != 12.0 {
+		t.Fatalf("bola 2 debía tener peso 12, tiene %v", e.Valvuladoras[2].Peso)
+	}
+
+	// Índice fuera de rango o peso negativo no deben romper ni cambiar nada.
+	st.AplicarPeso(9, 50)   // fuera de rango
+	st.AplicarPeso(0, -5)   // negativo -> 0
+	if st.Estado().Valvuladoras[0].Peso != 0 {
+		t.Fatalf("peso negativo debía quedar en 0")
+	}
+}
+
 func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
 	st := New("B2-A-silo-1", 2, nil)
 

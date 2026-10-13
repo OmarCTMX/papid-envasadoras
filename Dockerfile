@@ -28,6 +28,8 @@ COPY internal/dashboard/web ./internal/dashboard/web
 
 EXPOSE 3000
 
-# Las variables del .env se pasan en runtime:
-#   docker run --env-file .env -p 3000:3000 dashboard-envasadoras:latest
+# La configuración vive en config.yaml, que se MONTA en /app/config.yaml
+# (ver docker-compose.yml). El dashboard lo busca ahí por defecto. También se
+# puede indicar otra ruta con la variable CONFIG_YAML.
+#   docker run -v ./config.yaml:/app/config.yaml:ro -p 3000:3000 dashboard-envasadoras:latest
 CMD ["/app/dashboard-envasadoras"]

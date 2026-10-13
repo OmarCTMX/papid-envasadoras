@@ -180,10 +180,12 @@
                 amplitude: 6,
                 waveLength: '80%',
                 label: {
-                    // El texto es el PESO directo (no un porcentaje) con la
-                    // unidad "kg" en tamaño menor debajo, usando rich text.
+                    // El texto es el PESO REAL del MQTT (no un porcentaje), con
+                    // 1 decimal. No se redondea a entero: el peso puede traer
+                    // decimales (ej. 20.4 kg) y debe verse tal cual. La unidad
+                    // "kg" va en tamaño menor debajo, usando rich text.
                     formatter: function () {
-                        return '{peso|' + Math.round(peso) + '}{unidad|kg}';
+                        return '{peso|' + peso.toFixed(1) + '}{unidad|kg}';
                     },
                     rich: {
                         // Tamaños proporcionales a la bola (ver dibujarBola).

@@ -3,21 +3,21 @@
 # Levantar:
 #   docker compose up -d --build
 #
-# Las variables (MACHINE_CODE, NATS_URL, etc.) se leen del .env que está en la
-# misma carpeta. Para cambiar de envasadora basta editar MACHINE_CODE en el
-# .env y hacer un docker compose up -d (sin --build, es la misma imagen).
+# TODA la configuración (servidor, NATS, MQTT y las valvuladoras) vive en
+# config.yaml, que se monta dentro del contenedor. Para cambiar de envasadora
+# basta editar config.yaml y hacer docker compose up -d (sin --build, es la
+# misma imagen). Ya NO se usa el .env.
 #
 # Si necesitas correr VARIAS envasadoras en la misma máquina (ej. pruebas),
-# duplica el servicio con distintos puertos y variables:
+# duplica el servicio con distinto puerto y su propio config:
 #
 #   dashboard-2:
 #     <<: *dashboard
 #     container_name: papid-envasadora-2
-#     environment:
-#       MACHINE_CODE: envasadora-2
-#       MAQUINA: Envasadora-2
+#     volumes:
+#       - ./config.silo2.yaml:/app/config.yaml:ro
 #     ports:
-#       - "3001:3000"
+#       - "3002:3000"
 
 services:
   dashboard:
@@ -25,23 +25,14 @@ services:
       context: .
       dockerfile: Dockerfile
     image: dashboard-envasadoras:latest
-    container_name: papid-envasadora-${MACHINE_CODE:-B2-A-silo-1}
+    container_name: papid-envasadora
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       TZ: America/Mexico_City
-      PORT: "3000"
-      REGION: ${REGION:-Cotija}
-      MACHINE_CODE: ${MACHINE_CODE:-B2-A-silo-1}
-      MAQUINA: ${MAQUINA:-B2-A Silo 1}
-      NUM_ENVASADORAS: ${NUM_ENVASADORAS:-2}
-      API_TOKEN: ${API_TOKEN:-}
-      RESET_HORA: ${RESET_HORA:-18:00}
-      NATS_URL: ${NATS_URL:-nats://host.docker.internal:4222}
-      NATS_USER: ${NATS_USER:-papid}
-      NATS_PASS: ${NATS_PASS:-papid2024}
-
+    volumes:
+      # config.yaml del host -> /app/config.yaml dentro del contenedor (solo
+      # lectura). El dashboard lo busca ahí por defecto.
+      - ./config.yaml:/app/config.yaml:ro
     ports:
       - "3001:3000"
     extra_hosts:
