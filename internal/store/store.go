@@ -305,6 +305,24 @@ func (s *Store) AplicarPeso(i int, peso float64) {
 	s.AplicarCampo(i, CampoPeso, peso)
 }
 
+// AplicarBultos FIJA el total de sacos de la envasadora i (viene por MQTT en el
+// campo "sacos", valor absoluto, no un incremento). El total de la orden es la
+// suma de las envasadoras (lo calcula Estado()). El contador lo reinicia el
+// propio MQTT al cambiar de orden, así que aquí solo se refleja el valor.
+// Ignora índices fuera de rango y valores negativos.
+func (s *Store) AplicarBultos(i, sacos int) {
+	if i < 0 || i >= s.n || sacos < 0 {
+		return
+	}
+	s.mu.Lock()
+	cambio := s.bultosOrden[i] != sacos
+	s.bultosOrden[i] = sacos
+	s.mu.Unlock()
+	if cambio {
+		s.notificar()
+	}
+}
+
 // AplicarProceso recibe los datos del PLC. Actualiza peso/setpoint/columna/leds
 // y, si hay orden, convierte los incrementos del contador del PLC en bultos de
 // la orden y en filas de la tabla.

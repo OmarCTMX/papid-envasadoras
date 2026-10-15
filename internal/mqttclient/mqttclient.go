@@ -26,6 +26,14 @@ type mensajePeso struct {
 	Value float64 `json:"value"`
 }
 
+// mensajeBultos es el payload del topic de bultos de una valvuladora. Solo nos
+// interesa Sacos (total absoluto de esa envasadora); el resto se ignora.
+//
+//	{"nucleo":"B","numOrden":955709,"sacos":117,"silo":1,"valvuladora":1,...}
+type mensajeBultos struct {
+	Sacos int `json:"sacos"`
+}
+
 // destino es a qué bola y a qué campo va un topic.
 type destino struct {
 	bola  int
@@ -34,21 +42,23 @@ type destino struct {
 
 // Cliente mantiene la conexión MQTT y enruta cada topic a su bola y campo.
 type Cliente struct {
-	cli        mqtt.Client
-	st         *store.Store
-	brokerURL  string             // para logs
-	topicABola map[string]destino // topic -> (índice de bola, campo)
-	onEstado   func(bool)         // avisa conectado/desconectado (para el footer)
+	cli          mqtt.Client
+	st           *store.Store
+	brokerURL    string             // para logs
+	topicABola   map[string]destino // topic de peso/setpoint/tara/columna -> (bola, campo)
+	topicABultos map[string]int     // topic de bultos -> índice de bola
+	onEstado     func(bool)         // avisa conectado/desconectado (para el footer)
 }
 
 // Nuevo arma el cliente a partir de la config y el store. onEstado puede ser
 // nil; si no, se llama con true/false al conectar/desconectar.
 func Nuevo(cfg *config.Config, st *store.Store, onEstado func(bool)) *Cliente {
 	c := &Cliente{
-		st:         st,
-		brokerURL:  cfg.BrokerURL(),
-		topicABola: make(map[string]destino, len(cfg.Valvuladoras)*4),
-		onEstado:   onEstado,
+		st:           st,
+		brokerURL:    cfg.BrokerURL(),
+		topicABola:   make(map[string]destino, len(cfg.Valvuladoras)*4),
+		topicABultos: make(map[string]int, len(cfg.Valvuladoras)),
+		onEstado:     onEstado,
 	}
 	agregar := func(topic string, i int, campo store.Campo) {
 		topic = strings.TrimSpace(topic)
@@ -66,6 +76,13 @@ func Nuevo(cfg *config.Config, st *store.Store, onEstado func(bool)) *Cliente {
 		agregar(v.SetpointTopic, i, store.CampoSetpoint)
 		agregar(v.TaraTopic, i, store.CampoTara)
 		agregar(v.ColumnaTopic, i, store.CampoColumna)
+		if bt := strings.TrimSpace(v.BultosTopic); bt != "" {
+			if prev, ok := c.topicABultos[bt]; ok {
+				log.Printf("[mqtt] AVISO: el topic de bultos %s ya estaba en bola %d; se usa bola %d",
+					bt, prev+1, i+1)
+			}
+			c.topicABultos[bt] = i
+		}
 	}
 
 	opts := mqtt.NewClientOptions()
@@ -136,6 +153,23 @@ func (c *Cliente) suscribir() {
 			}
 		}()
 	}
+
+	// Topics de bultos (campo "sacos", total absoluto por valvuladora).
+	for topic, idx := range c.topicABultos {
+		i := idx
+		t := topic
+		token := c.cli.Subscribe(t, 0, func(_ mqtt.Client, m mqtt.Message) {
+			c.manejarBultos(i, m.Payload())
+		})
+		go func() {
+			token.Wait()
+			if err := token.Error(); err != nil {
+				log.Printf("[mqtt] No se pudo suscribir a %s: %v", t, err)
+			} else {
+				log.Printf("[mqtt] Suscrito a %s (bultos bola %d)", t, i+1)
+			}
+		}()
+	}
 }
 
 // manejar parsea el payload y actualiza el campo de la bola indicada.
@@ -146,6 +180,17 @@ func (c *Cliente) manejar(d destino, payload []byte) {
 		return
 	}
 	c.st.AplicarCampo(d.bola, d.campo, msg.Value)
+}
+
+// manejarBultos parsea el payload de bultos y FIJA el total de sacos de la
+// bola i (valor absoluto, no un incremento).
+func (c *Cliente) manejarBultos(i int, payload []byte) {
+	var msg mensajeBultos
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		log.Printf("[mqtt] Payload de bultos inválido para bola %d (ignorado): %v", i+1, err)
+		return
+	}
+	c.st.AplicarBultos(i, msg.Sacos)
 }
 
 func (c *Cliente) avisar(conectado bool) {

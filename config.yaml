@@ -21,31 +21,35 @@ nats:
   usuario: "papid"
   password: "papid2024"
 
-# --- Broker MQTT (de donde llega el peso de las bolas) ---
+# --- Broker MQTT (de donde llegan el peso y los bultos de las bolas) ---
 mqtt:
-  broker: "192.168.90.101"   # IP o host del broker
+  broker: "10.10.30.24"  # IP o host del broker
   puerto: 1883           # puerto MQTT (sin TLS)
   usuario: ""            # vacío: el broker no requiere auth
   password: ""
   tls: false
 
 # --- Valvuladoras del silo, EN ORDEN (bola 1, bola 2, ...) ---
-# codigo:     identificador propio (se muestra junto a los bultos y va en los
-#             reportes). El payload del PLC trae este mismo valor en "name".
-# peso_topic: topic MQTT del que sale el peso. Del payload solo se usa "value":
-#             {"name":"b2-b-v1","quality":"good","timestamp":"...","value":20}
-# setpoint_topic / tara_topic / columna_topic (OPCIONALES): mismo formato
-#             {"value": ...}. Si no se ponen, la pantalla muestra "—".
+# codigo:      identificador propio (se muestra junto a los bultos y va en los
+#              reportes). El payload del PLC trae este mismo valor en "name".
+# peso_topic:  topic MQTT del que sale el peso. Del payload solo se usa "value":
+#              {"name":"b2-b-v1","quality":"good","timestamp":"...","value":20}
+# bultos_topic: topic del TOTAL de sacos de ESTA valvuladora. Del payload solo
+#              se usa "sacos" (total absoluto, no un incremento):
+#              {"nucleo":"B","numOrden":955709,"sacos":117,"silo":1,"valvuladora":1}
+#              El total de bultos de la orden = suma de los "sacos" de todas.
+# setpoint_topic / tara_topic / columna_topic (OPCIONALES): formato {"value": ...}.
+#              Si no se ponen, la pantalla muestra "—".
 valvuladoras:
   - codigo: "ENV-01"
     peso_topic: "plc/s7/b2-a-v9"
+    bultos_topic: "registro/envase/B/1"
     #setpoint_topic: "plc/s7/b2-b-v1-setpoint"
     #tara_topic: "plc/s7/b2-b-v1-tara"
     #columna_topic: "plc/s7/b2-b-v1-columna"
-    #peso_topic: "plc/s7/b2-b-v8
   - codigo: "ENV-02"
     peso_topic: "plc/s7/b2-a-v8"
-    #peso_topic: "plc/s7/b2-b-v9
+    bultos_topic: "registro/envase/B/2"
   - codigo: "ENV-03"
     peso_topic: "plc/s7/b2-b-v3"
-    #peso_topic: "plc/s7/b2-b-v10
+    bultos_topic: "registro/envase/B/3"

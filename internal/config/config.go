@@ -56,6 +56,12 @@ type Valvuladora struct {
 	SetpointTopic string `yaml:"setpoint_topic"`
 	TaraTopic     string `yaml:"tara_topic"`
 	ColumnaTopic  string `yaml:"columna_topic"`
+	// BultosTopic: topic del total de sacos de ESTA valvuladora. El payload
+	// trae el campo "sacos" con el total absoluto (no un incremento):
+	//   {"nucleo":"B","numOrden":955709,"sacos":117,"silo":1,"valvuladora":1,...}
+	// El total de bultos de la orden = suma de los "sacos" de las valvuladoras.
+	// El contador lo reinicia el propio MQTT al cambiar de orden.
+	BultosTopic string `yaml:"bultos_topic"`
 }
 
 // Config es el contenido completo de config.yaml.

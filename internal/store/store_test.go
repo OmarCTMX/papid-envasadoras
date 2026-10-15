@@ -71,6 +71,39 @@ func TestAplicarPeso(t *testing.T) {
 	}
 }
 
+// TestAplicarBultos verifica que los bultos de MQTT (campo "sacos", total
+// absoluto) se FIJEN por envasadora y que el total sea la suma, sin depender de
+// orden ni de la lógica de incrementos del PLC.
+func TestAplicarBultos(t *testing.T) {
+	st := New("B2-A-silo-2", 3, nil)
+	st.AplicarBultos(0, 250)
+	st.AplicarBultos(1, 170)
+	st.AplicarBultos(2, 415)
+
+	e := st.Estado()
+	if e.Valvuladoras[0].Bultos != 250 || e.Valvuladoras[1].Bultos != 170 || e.Valvuladoras[2].Bultos != 415 {
+		t.Fatalf("bultos por envasadora incorrectos: %d/%d/%d",
+			e.Valvuladoras[0].Bultos, e.Valvuladoras[1].Bultos, e.Valvuladoras[2].Bultos)
+	}
+	if e.BultosOrden != 835 {
+		t.Fatalf("el total debía ser la suma (835), obtuve %d", e.BultosOrden)
+	}
+
+	// Es ABSOLUTO: una lectura nueva reemplaza (no suma) el valor anterior.
+	st.AplicarBultos(0, 300)
+	if e := st.Estado(); e.Valvuladoras[0].Bultos != 300 || e.BultosOrden != 885 {
+		t.Fatalf("lectura absoluta: esperaba b0=300 total=885, obtuve b0=%d total=%d",
+			e.Valvuladoras[0].Bultos, e.BultosOrden)
+	}
+
+	// Índice fuera de rango o negativo se ignora.
+	st.AplicarBultos(9, 100)
+	st.AplicarBultos(0, -5)
+	if st.Estado().Valvuladoras[0].Bultos != 300 {
+		t.Fatalf("índice/valor inválido no debía cambiar nada")
+	}
+}
+
 func TestBultosSeSumanDesdeLaOrden(t *testing.T) {
 	st := New("B2-A-silo-1", 2, nil)
 
