@@ -157,6 +157,9 @@
         clearTimeout(timerCarrusel);
         timerCarrusel = setTimeout(siguienteSlide, CAROUSEL_MS);
         if (slides[slideActual] === slidePersonal) checkMarquee();
+        // Reajusta los números de la pantalla que se acaba de mostrar: su
+        // ancho real recién se conoce al volverse visible.
+        reajustarTodo();
     }
 
     function siguienteSlide() {
@@ -392,6 +395,18 @@
     //  mínimo para no desaparecer). Barato: un puñado de iteraciones y solo
     //  cuando cambia el número.
     // ============================================================
+    // Registro de los textos que se auto-ajustan, para recalcularlos cuando
+    // cambia el tamaño de la ventana o cuando su pantalla se vuelve visible
+    // (al mostrarse una slide por primera vez el ancho recién se conoce).
+    const ajustables = new Map(); // el -> { cont, soloAncho }
+
+    function reajustarTodo() {
+        ajustables.forEach(function (opts, el) {
+            ajustarTexto(el, opts.cont, opts.soloAncho);
+        });
+    }
+    window.addEventListener('resize', reajustarTodo);
+
     function ajustarTexto(el, contenedor, soloAncho) {
         if (!el) return;
         // Contenedor contra el que se mide el desbordamiento. Por defecto el
@@ -399,6 +414,9 @@
         // .bola-texto se encoge al contenido y nunca "desbordaría").
         const cont = contenedor || el.parentElement;
         if (!cont) return;
+        // Se recuerda este elemento para poder re-ajustarlo al cambiar el
+        // tamaño de la ventana o al mostrarse su pantalla (ver reajustarTodo).
+        ajustables.set(el, { cont: cont, soloAncho: !!soloAncho });
         el.style.fontSize = '';            // vuelve al tamaño del CSS
         // px actuales del CSS (base desde la que se encoge).
         let px = parseFloat(getComputedStyle(el).fontSize);

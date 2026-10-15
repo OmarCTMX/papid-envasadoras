@@ -788,7 +788,7 @@ body {
 .envase-num {
     /* Lo más grande que entra sin desbordar la celda ni a lo alto ni ancho.
        Sin el título arriba hay más alto disponible. */
-    font-size: min(78vh, calc(62vw / var(--n)));
+    font-size: min(84vh, calc(72vw / var(--n)));
     font-weight: 800;
     line-height: 1;
     color: var(--ink);
@@ -796,7 +796,7 @@ body {
 }
 
 .envase-etiqueta {
-    font-size: min(4vh, calc(7vw / var(--n)));
+    font-size: min(8vh, calc(12vw / var(--n)));
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
