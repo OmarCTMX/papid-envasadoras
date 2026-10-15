@@ -29,6 +29,7 @@
     /* --- Texto --- */
     --ink: #f4f2ee;     /* texto y bordes principales (blanco) */
     --muted: #9a948b;   /* texto secundario (etiquetas) */
+    --subtitulo: #d8d4cc; /* subtítulos: blanco hueso opaco (más que --muted) */
     --linea: #3a3a40;   /* líneas suaves */
 
     /* --- Color de marca / naranja --- */
@@ -404,7 +405,8 @@ body {
     gap: 2.5vh;
 }
 
-/* El rectángulo ocupa toda la pantalla y centra su contenido (número + nombre). */
+/* Ocupa toda la pantalla y centra su contenido (número + nombre). Fondo negro,
+   sin caja: se funde con el fondo (como la pantalla de la hora). */
 .orden-caja {
     flex: 1;
     min-height: 0;
@@ -415,22 +417,18 @@ body {
     justify-content: center;
     gap: 2vh;
     padding: 4vh 2vw;
-    background: var(--blanco);
-    border: 3px solid var(--ink);
-    border-radius: 12px;
-    box-shadow: 6px 6px 0 var(--ink);
-    /* El contenido no debe desbordar la caja ni a lo alto ni a lo ancho. */
+    /* El contenido no debe desbordar ni a lo alto ni a lo ancho. */
     overflow: hidden;
 }
 
-/* Nombre de la orden (debajo del número), estilo etiqueta gris. Puede ser
+/* Nombre de la orden (debajo del número), subtítulo en blanco hueso. Puede ser
    largo: se parte en varias líneas para verse COMPLETO (sin recortar). */
 .orden-etiqueta {
-    font-size: min(6vh, 4vw);
+    font-size: min(8vh, 5.5vw);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    color: var(--muted);
+    color: var(--subtitulo);
     max-width: 94%;
     text-align: center;
     line-height: 1.15;
@@ -740,17 +738,14 @@ body {
     gap: 2.5vh;
 }
 
-/* La card ocupa toda la pantalla: título arriba + fila de contadores abajo. */
+/* Ocupa toda la pantalla: fila de contadores. Fondo negro, sin caja (se funde
+   con el fondo). La separación entre envasadoras sí se conserva (ver .envase). */
 .bultos-card {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     padding: 2vh 2vw 3vh;
-    background: var(--blanco);
-    border: 3px solid var(--ink);
-    border-radius: 12px;
-    box-shadow: 6px 6px 0 var(--ink);
 }
 
 .bultos-envases {
@@ -805,7 +800,7 @@ body {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--muted);
+    color: var(--subtitulo);
 }
 
 /* Sin footer: el carrusel (.carrusel) ocupa toda la ventana. La hora, el logo
