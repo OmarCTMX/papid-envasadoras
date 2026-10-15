@@ -62,11 +62,12 @@ func TestAplicarPeso(t *testing.T) {
 		t.Fatalf("bola 2 debía tener peso 12, tiene %v", e.Valvuladoras[2].Peso)
 	}
 
-	// Índice fuera de rango o peso negativo no deben romper ni cambiar nada.
-	st.AplicarPeso(9, 50)   // fuera de rango
-	st.AplicarPeso(0, -5)   // negativo -> 0
-	if st.Estado().Valvuladoras[0].Peso != 0 {
-		t.Fatalf("peso negativo debía quedar en 0")
+	// Un índice fuera de rango se ignora (no rompe). El peso negativo SÍ se
+	// aplica: la báscula puede marcar menos de 0 tras una tara.
+	st.AplicarPeso(9, 50) // fuera de rango: se ignora
+	st.AplicarPeso(0, -5) // negativo: se conserva con su signo
+	if st.Estado().Valvuladoras[0].Peso != -5 {
+		t.Fatalf("peso negativo debía conservarse (-5), obtuve %v", st.Estado().Valvuladoras[0].Peso)
 	}
 }
 

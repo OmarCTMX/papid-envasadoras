@@ -244,27 +244,69 @@ func (s *Store) QuitarTodo() {
 	s.notificar()
 }
 
-// AplicarProceso recibe los datos del PLC. Actualiza peso/setpoint/columna/leds
-// y, si hay orden, convierte los incrementos del contador del PLC en bultos de
-// AplicarPeso actualiza SOLO el peso de la bola i (lo que hoy llega por MQTT).
-// No toca bultos, setpoint, columna ni LEDs: esos vendrán por otros topics en
-// el futuro. Ignora índices fuera de rango y pesos negativos.
-func (s *Store) AplicarPeso(i int, peso float64) {
+// Campo identifica un valor numérico de una valvuladora que llega por su
+// propio topic MQTT (formato {"value": ...}).
+type Campo int
+
+const (
+	CampoPeso     Campo = iota // peso actual en la báscula
+	CampoSetpoint              // setpoint del PLC
+	CampoTara                  // tara del PLC
+	CampoColumna               // columna del PLC
+)
+
+// String devuelve el nombre del campo (para logs).
+func (c Campo) String() string {
+	switch c {
+	case CampoPeso:
+		return "peso"
+	case CampoSetpoint:
+		return "setpoint"
+	case CampoTara:
+		return "tara"
+	case CampoColumna:
+		return "columna"
+	}
+	return "desconocido"
+}
+
+// AplicarCampo actualiza SOLO un campo de la bola i (lo que llega por MQTT).
+// No toca bultos ni LEDs. Ignora índices fuera de rango; peso, setpoint, tara
+// y columna se guardan tal cual (el peso puede ser negativo).
+func (s *Store) AplicarCampo(i int, campo Campo, v float64) {
 	if i < 0 || i >= s.n {
 		return
 	}
-	if peso < 0 {
-		peso = 0
-	}
 	s.mu.Lock()
-	// s.proceso guarda el último proceso del PLC; aquí solo tocamos el peso de
-	// esta bola. Normalizar garantiza que el slice tenga s.n posiciones.
+	// Normalizar garantiza que el slice tenga s.n posiciones.
 	s.proceso.Normalizar(s.n)
-	s.proceso.Valvuladoras[i].Peso = peso
+	val := &s.proceso.Valvuladoras[i]
+	switch campo {
+	case CampoPeso:
+		// El peso puede ser negativo (la báscula marca menos de 0 tras tarar).
+		// Se guarda tal cual; la pantalla lo muestra con su signo.
+		val.Peso = v
+	case CampoSetpoint:
+		val.Setpoint = v
+	case CampoTara:
+		val.Tara = v
+	case CampoColumna:
+		val.Columna = v
+	default:
+		s.mu.Unlock()
+		return
+	}
 	s.mu.Unlock()
 	s.notificar()
 }
 
+// AplicarPeso actualiza SOLO el peso de la bola i. Atajo de AplicarCampo.
+func (s *Store) AplicarPeso(i int, peso float64) {
+	s.AplicarCampo(i, CampoPeso, peso)
+}
+
+// AplicarProceso recibe los datos del PLC. Actualiza peso/setpoint/columna/leds
+// y, si hay orden, convierte los incrementos del contador del PLC en bultos de
 // la orden y en filas de la tabla.
 func (s *Store) AplicarProceso(e model.Estado) {
 	e.Normalizar(s.n)
@@ -412,6 +454,8 @@ func (s *Store) Estado() model.Estado {
 		e.BultosPorLote = o.CantidadBts
 		e.LoteActual = model.LotesCompletados(total, o.CantidadBts, o.NoLotes)
 		e.OrdenTerminada = o.NoLotes > 0 && e.LoteActual >= o.NoLotes
+		// Total de bultos esperados de la orden: bultos por lote * lotes.
+		e.BultosEsperados = o.CantidadBts * o.NoLotes
 	}
 	// Sin orden (o sin peso del producto), la bola usa el del PLC si lo manda.
 	if e.PesoProducto <= 0 {

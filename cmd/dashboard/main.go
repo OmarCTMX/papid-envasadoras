@@ -34,6 +34,7 @@ import (
 	"papid-envasadoras/internal/mqttclient"
 	"papid-envasadoras/internal/natsclient"
 	"papid-envasadoras/internal/persistence"
+	"papid-envasadoras/internal/personal"
 	"papid-envasadoras/internal/render"
 	"papid-envasadoras/internal/sse"
 	"papid-envasadoras/internal/store"
@@ -56,6 +57,8 @@ func main() {
 
 	// --- Componentes ---
 	st := store.New(machineCode, numEnvasadoras, codigos)
+	// Personal EN VIVO (login/logout por tarjeta) que publica el emitter.
+	stPersonal := personal.New(cfg.Servidor.SlotsPersonal)
 	broker := sse.New()
 
 	renderer, err := render.New("internal/dashboard/web/templates")
@@ -77,14 +80,21 @@ func main() {
 
 	// Al conectar un navegador: le damos el estado actual Y el estado de NATS,
 	// para que el footer no quede mal hasta el próximo cambio.
+	eventoPersonal := func() sse.Evento {
+		return sse.Evento{Nombre: "personal", Data: renderer.PersonalJSON(stPersonal.Slots())}
+	}
 	broker.SetOnConnect(func() []sse.Evento {
 		return []sse.Evento{
 			{Nombre: "estado", Data: renderer.EstadoJSON(st.Estado())},
+			eventoPersonal(),
 			eventoNATS(),
 		}
 	})
 	st.SetOnChange(func() {
 		broker.Publicar(sse.Evento{Nombre: "estado", Data: renderer.EstadoJSON(st.Estado())})
+	})
+	stPersonal.SetOnChange(func() {
+		broker.Publicar(eventoPersonal())
 	})
 
 	// --- Persistencia (NATS KV) ---
@@ -125,6 +135,26 @@ func main() {
 	// arriba lo capturan (publicarOrden, controlEmitter).
 	var nc *nats.Conn
 
+	// restaurarPersonal lee del KV del emitter el personal y su status de
+	// login. Se llama al conectar y en cada reconexión, para ponerse al día con
+	// los login/logout que pasaron mientras no había NATS. Sin clave = el silo
+	// no tiene personal asignado (todo vacante).
+	restaurarPersonal := func() {
+		ekv := emitterKV.Load()
+		if ekv == nil {
+			return
+		}
+		personas, existe, err := ekv.CargarPersonal(machineCode)
+		if err != nil {
+			log.Printf("[kv] Error leyendo el personal del emitter: %v", err)
+			return
+		}
+		if !existe {
+			personas = nil
+		}
+		stPersonal.AplicarSync(personas)
+	}
+
 	// Al conectar (la primera vez): abrir el KV y restaurar lo guardado.
 	alConectar := func(c *nats.Conn) {
 		kv, err := persistence.New(c)
@@ -140,6 +170,13 @@ func main() {
 		} else if ekv != nil {
 			emitterKV.Store(ekv)
 		}
+
+		// Personal en vivo: suscripción al emitter + estado inicial del KV
+		// (para no esperar al próximo login/logout para pintar las tarjetas).
+		if _, err := natsclient.SuscribirPersonal(c, machineCode, stPersonal); err != nil {
+			log.Printf("[nats] No se pudo suscribir al personal del emitter: %v", err)
+		}
+		restaurarPersonal()
 
 		snap, err := kv.Cargar(machineCode)
 		switch {
@@ -195,6 +232,12 @@ func main() {
 	onEstadoNATS := func(conectado bool) {
 		natsOK.Store(conectado)
 		broker.Publicar(eventoNATS())
+		// En una RECONEXIÓN el KV del emitter ya está abierto: se relee el
+		// personal (en la primera conexión emitterKV aún es nil y lo hace
+		// alConectar). Va en goroutine para no bloquear el handler de NATS.
+		if conectado {
+			go restaurarPersonal()
+		}
 	}
 	if conn, err := natsclient.Conectar(cfgNats, alConectar, onEstadoNATS); err != nil {
 		log.Printf("[dashboard] No se pudo conectar a NATS: %v (el dashboard sigue funcionando)", err)
@@ -236,12 +279,34 @@ func main() {
 	ctrl := &controlEmitter{nc: nc, code: machineCode, emitterKV: &emitterKV}
 	api.New(st, token, ctrl).Registrar(mux)
 
+	// --- Endpoint de PRUEBAS (solo si DEBUG_PRUEBAS=1) ---
+	// Inyecta peso y bultos directo al store, sin MQTT ni PLC, para probar la
+	// UI (p.ej. que un número grande se ajuste y no se desborde). NO se registra
+	// en producción. Ejemplos:
+	//   GET /debug/proceso?bola=0&peso=123456.7
+	//   GET /debug/proceso?bola=1&bultos=99999   (requiere orden cargada)
+	if os.Getenv("DEBUG_PRUEBAS") == "1" {
+		registrarDebugPruebas(mux, st)
+		log.Println("[dashboard] DEBUG_PRUEBAS=1: endpoint /debug/proceso ACTIVO (solo para pruebas)")
+	}
+
 	datosIndex := render.DatosIndex{
 		Titulo:         construirTitulo(cfg.Servidor.Region, cfg.Servidor.Maquina),
 		Maquina:        cfg.Servidor.Maquina,
 		Version:        strconv.FormatInt(time.Now().Unix(), 10),
 		NumEnvasadoras: numEnvasadoras,
 		Codigos:        codigos,
+
+		CarouselSegundos: cfg.Servidor.CarouselSegundos,
+		SlotsPersonal:    stPersonal.NumSlots(),
+		Opcionales:       make([]render.Opcionales, numEnvasadoras),
+	}
+	for i, v := range cfg.Valvuladoras {
+		datosIndex.Opcionales[i] = render.Opcionales{
+			Setpoint: strings.TrimSpace(v.SetpointTopic) != "",
+			Tara:     strings.TrimSpace(v.TaraTopic) != "",
+			Columna:  strings.TrimSpace(v.ColumnaTopic) != "",
+		}
 	}
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		html, err := renderer.Index(datosIndex)
@@ -303,6 +368,57 @@ func main() {
 		}
 	}
 	log.Println("[dashboard] Detenido")
+}
+
+// registrarDebugPruebas monta GET /debug/proceso para inyectar peso y bultos
+// a mano (solo pruebas). peso usa AplicarCampo (no depende de orden); bultos
+// usa AplicarProceso con el contador del PLC (solo cuenta si hay orden).
+func registrarDebugPruebas(mux *http.ServeMux, st *store.Store) {
+	mux.HandleFunc("GET /debug/proceso", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		bola, _ := strconv.Atoi(q.Get("bola")) // default 0
+
+		if v := q.Get("peso"); v != "" {
+			peso, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				http.Error(w, "peso inválido: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			st.AplicarCampo(bola, store.CampoPeso, peso)
+		}
+		if v := q.Get("setpoint"); v != "" {
+			f, _ := strconv.ParseFloat(v, 64)
+			st.AplicarCampo(bola, store.CampoSetpoint, f)
+		}
+		if v := q.Get("tara"); v != "" {
+			f, _ := strconv.ParseFloat(v, 64)
+			st.AplicarCampo(bola, store.CampoTara, f)
+		}
+		if v := q.Get("columna"); v != "" {
+			f, _ := strconv.ParseFloat(v, 64)
+			st.AplicarCampo(bola, store.CampoColumna, f)
+		}
+
+		// bultos: el dashboard cuenta los INCREMENTOS del contador del PLC y
+		// solo si hay orden. Para fijar un valor exacto mandamos dos lecturas:
+		// primero 0 (línea base) y luego n (el incremento = n). Así el contador
+		// de la orden de esa bola queda en n. Requiere una orden cargada.
+		if v := q.Get("bultos"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				http.Error(w, "bultos inválido: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			nv := st.NumEnvasadoras()
+			base := model.EstadoVacio(nv)
+			st.AplicarProceso(base) // línea base: contador en 0
+			if bola >= 0 && bola < nv {
+				base.Valvuladoras[bola].Bultos = n
+			}
+			st.AplicarProceso(base) // incremento n -> bultos de la orden = n
+		}
+		w.Write([]byte("ok\n"))
+	})
 }
 
 // iniciarResetDiario ejecuta fn todos los días a la hora "HH:MM" (hora local,

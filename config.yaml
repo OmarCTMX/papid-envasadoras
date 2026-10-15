@@ -11,10 +11,13 @@ servidor:
   maquina: "B2-A Silo 2"         # nombre visible (footer/título)
   reset_hora: "18:00"            # HH:MM del reseteo diario; vacío u "off" = sin reseteo
   api_token: ""                  # token del POST/DELETE; vacío = API abierta
+  carousel_segundos: 10          # segundos por pantalla del carrusel (default 10)
+  slots_personal: 2              # rectángulos en la pantalla de personal (1 a 3, default 2)
 
 # --- NATS (solo estado de conexión + aviso de orden al cambio de pantalla) ---
 nats:
-  url: "nats://192.168.90.156:4222"
+  #url: "nats://192.168.90.156:4222"
+  url: "nats://localhost:4222"
   usuario: "papid"
   password: "papid2024"
 
@@ -31,13 +34,18 @@ mqtt:
 #             reportes). El payload del PLC trae este mismo valor en "name".
 # peso_topic: topic MQTT del que sale el peso. Del payload solo se usa "value":
 #             {"name":"b2-b-v1","quality":"good","timestamp":"...","value":20}
+# setpoint_topic / tara_topic / columna_topic (OPCIONALES): mismo formato
+#             {"value": ...}. Si no se ponen, la pantalla muestra "—".
 valvuladoras:
-  - codigo: "b2-b-v1"
+  - codigo: "ENV-01"
     peso_topic: "plc/s7/b2-a-v9"
+    #setpoint_topic: "plc/s7/b2-b-v1-setpoint"
+    #tara_topic: "plc/s7/b2-b-v1-tara"
+    #columna_topic: "plc/s7/b2-b-v1-columna"
     #peso_topic: "plc/s7/b2-b-v8
-  - codigo: "b2-b-v2"
+  - codigo: "ENV-02"
     peso_topic: "plc/s7/b2-a-v8"
     #peso_topic: "plc/s7/b2-b-v9
-  - codigo: "b2-b-v3"
+  - codigo: "ENV-03"
     peso_topic: "plc/s7/b2-b-v3"
     #peso_topic: "plc/s7/b2-b-v10

@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"papid-envasadoras/internal/model"
+	"papid-envasadoras/internal/personal"
 	"papid-envasadoras/internal/store"
 )
 
@@ -89,6 +90,31 @@ func Conectar(cfg Config, onConectado func(*nats.Conn), onEstado func(bool)) (*n
 		opts = append(opts, nats.UserInfo(cfg.User, cfg.Pass))
 	}
 	return nats.Connect(cfg.URL, opts...)
+}
+
+// SuscribirPersonal escucha el personal EN VIVO (login/logout) que publica el
+// emitter para este silo en papid.emitter.<MACHINE_CODE> y lo aplica al store
+// de personal. La suscripción sobrevive a las reconexiones (nats.go la
+// restablece sola).
+func SuscribirPersonal(nc *nats.Conn, machineCode string, st *personal.Store) (*nats.Subscription, error) {
+	subject := "papid.emitter." + machineCode
+	sub, err := nc.Subscribe(subject, func(m *nats.Msg) {
+		var msg personal.MensajeSync
+		if err := json.Unmarshal(m.Data, &msg); err != nil {
+			log.Printf("[nats] Mensaje del emitter inválido en %s (ignorado): %v", subject, err)
+			return
+		}
+		if msg.MachineCode != "" && msg.MachineCode != machineCode {
+			log.Printf("[nats] Personal descartado: machine_code=%q no es %q", msg.MachineCode, machineCode)
+			return
+		}
+		st.AplicarSync(msg.Personnel)
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("[nats] Suscrito a %s (personal en vivo del emitter)", subject)
+	return sub, nil
 }
 
 // Suscribir escucha el proceso de este silo y lo aplica al store.

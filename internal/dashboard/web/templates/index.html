@@ -11,66 +11,216 @@
          fluido en pantallas sin GPU como las NUC. -->
 </head>
 <body>
-    <!-- ============ HEADER: OF / item / lote ============ -->
-    <header class="header">
-        <div class="header-of">
-            <span class="header-etiqueta">OF</span>
-            <span class="header-of-num" id="of-num">—</span>
-            <span class="header-item-name" id="item-name"></span>
-        </div>
-        <div class="header-lote">
-            <span class="header-etiqueta">Lote</span>
-            <span class="header-lote-valor">
-                <span id="lote-actual">—</span><span class="sep">/</span><span id="lotes-totales">—</span>
-            </span>
-        </div>
-    </header>
+    <!-- ============ CARRUSEL: 5 pantallas que rotan solas ============
+         1) Principal: logo, hora y nombre de la máquina.
+         2) Personal: tarjetas de login/logout en vivo (emitter por NATS).
+         3) Orden: nombre, número de orden y lote / total.
+         4) Silos: las bolas (2 o 3, según el YAML) con LEDs, setpoint, tara y
+            columna.
+         5) Bultos: total de la orden y bultos por envasadora.
+         BLOQUEO: mientras no haya orden o falte alguien por registrarse, solo
+         rotan la 1 y la 2. Todo grande para leerse de lejos. -->
+    <main class="carrusel" id="carrusel">
+        <!-- ---------- Pantalla 1: PRINCIPAL (logo + hora + máquina) ----------
+             data-siempre="1": se muestra aunque el carrusel esté BLOQUEADO. -->
+        <section class="slide slide-principal activa" data-siempre="1" aria-label="Principal">
+            <!-- Izquierda: logo grande, centrado. -->
+            <div class="principal-izq">
+                <img class="principal-logo" src="/static/LogoPegaduro.png" alt="Pegaduro">
+            </div>
+            <!-- Derecha: hora arriba, nombre de la máquina abajo. -->
+            <div class="principal-der">
+                <span class="principal-reloj" id="principal-reloj">--:--:--</span>
+                <span class="principal-maquina">{{.Maquina}}</span>
+            </div>
+        </section>
 
-    <!-- ============ LAS TRES VALVULADORAS ============ -->
-    <main class="envasadora" id="envasadora">
-        <!-- Se generan por JS al cargar, una vez, y se actualizan por SSE. -->
+        <!-- ---------- Pantalla 2: PERSONAL (login / logout en vivo) ----------
+             Mismo diseño y transiciones que el Dashboard Personal, pero en
+             horizontal y grande. Cada rectángulo es una "pista"; la tarjeta
+             crece a lo ANCHO según el estado:
+               gris (vacante)   -> solo el toro + "Vacante"
+               naranja (pending)-> crece y muestra nombre + rol
+               verde (active)   -> ocupa todo el rectángulo -->
+        <section class="slide slide-personal" data-solo-bloqueo="1" aria-label="Personal">
+            <div class="personal-slots" id="personal-slots">
+                <!-- Se generan por JS (SLOTS_PERSONAL) y se actualizan por SSE. -->
+            </div>
+        </section>
+
+        <!-- ---------- Pantalla 3: ORDEN ---------- -->
+        <!-- Un solo rectángulo: el número de orden grande y, debajo, el nombre
+             de la orden. El número ocupa TODO el ancho posible. -->
+        <section class="slide slide-orden" aria-label="Orden">
+            <div class="orden-caja" id="orden-caja">
+                <span class="orden-of" id="of-num">—</span>
+                <span class="orden-etiqueta" id="item-name">—</span>
+                <span class="orden-lote">
+                    <span class="orden-lote-valor">
+                        <span id="bultos-llevan">—</span><span class="sep">/</span><span id="bultos-esperados">—</span>
+                    </span>
+                    <span class="orden-etiqueta">Bultos</span>
+                </span>
+            </div>
+        </section>
+
+        <!-- ---------- Pantalla 4: SILOS ---------- -->
+        <!-- PAUSADA: data-pausada="1" hace que el carrusel la salte (no se ve
+             ni cuenta). Quita el atributo para volver a mostrarla. -->
+        <section class="slide slide-silos" data-pausada="1" aria-label="Envasadoras">
+            <div class="silos" id="silos">
+                <!-- Se generan por JS al cargar, una vez, y se actualizan por SSE. -->
+            </div>
+        </section>
+
+        <!-- ---------- Pantalla 5: BULTOS por envasadora ---------- -->
+        <!-- Una sola card: título "ENVASADORAS" grande arriba y los contadores
+             de cada envasadora abajo. El total de bultos ya se ve en la
+             pantalla de la orden. -->
+        <section class="slide slide-bultos" aria-label="Bultos">
+            <div class="bultos-card">
+                <div class="bultos-envases" id="bultos-envases">
+                    <!-- Una celda por envasadora (JS). -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Indicador discreto de qué pantalla se ve (un punto por pantalla,
+             los genera el JS). Bloqueado: los puntos de las pantallas que no
+             rotan se atenúan. -->
+        <div class="carrusel-puntos" id="carrusel-puntos" aria-hidden="true"></div>
     </main>
-
-    <!-- ============ FOOTER: logo + conexión + reloj ============ -->
-    <footer class="barra-estado" id="barra-estado">
-        <!-- Izquierda: logo + punto de estado + nombre de la máquina.
-             El nombre toma el color del estado (verde en vivo / rojo offline). -->
-        <div class="footer-izq">
-            <img class="logoPegaduro" src="/static/LogoPegaduro.png" alt="Pegaduro">
-            <span class="estado-conexion offline" id="estado-conexion">
-                <span class="estado-punto"></span>
-                <span class="estado-maquina" id="estado-maquina">{{.Maquina}}</span>
-            </span>
-        </div>
-
-        <!-- Centro: personal de la orden (llega en el POST /api/orden). -->
-        <span class="footer-trabajadores" id="footer-trabajadores">—</span>
-
-        <!-- Derecha: reloj -->
-        <span class="estado-reloj" id="estado-reloj">--:--:--</span>
-    </footer>
 
     <script>
     // ============================================================
-    //  Configuración inyectada por el servidor.
+    //  Configuración inyectada por el servidor (config.yaml).
     // ============================================================
     const NUM_VALVULADORAS = {{.NumEnvasadoras}};
-    // Código identificador de cada bola (del .env, CODIGOS_ENVASADORAS). Solo
-    // informativo: se muestra junto a los bultos. Puede venir vacío por bola.
+    // Código identificador de cada bola. Puede venir vacío por bola.
     const CODIGOS_VALVULADORAS = [{{range $i, $c := .Codigos}}{{if $i}},{{end}}"{{$c}}"{{end}}];
+    // Por bola: qué datos opcionales tienen topic en el YAML. Sin topic se
+    // muestra "—" (un 0 haría creer que el PLC manda 0).
+    const OPCIONALES = [{{range $i, $o := .Opcionales}}{{if $i}},{{end}}{ setpoint: {{$o.Setpoint}}, tara: {{$o.Tara}}, columna: {{$o.Columna}} }{{end}}];
+    // Duración de cada pantalla del carrusel (ms).
+    const CAROUSEL_MS = Math.max(3, {{.CarouselSegundos}}) * 1000;
+    // Rectángulos de la pantalla de personal (1..3, del YAML).
+    const SLOTS_PERSONAL = {{.SlotsPersonal}};
 
     // ============================================================
-    //  Construcción de las tres tarjetas (una sola vez).
-    //  Layout de cada tarjeta (sin título, la bola pegada arriba):
-    //    bola (liquidFill)  →  contador de bultos  →
-    //    [ LEDs vertical + setpoint/columna ] [ tabla ID / Peso / Fecha ]
-    //  El 100% de llenado de la bola es el PESO_PRODUCTO de la orden; el número
-    //  que se ve es el PESO directo (en kg).
+    //  Carrusel. Solo cambia clases (opacidad): barato en la NUC.
+    //
+    //  BLOQUEO (reemplaza el cambio de pantalla de Node-RED): las pantallas
+    //  de producción (orden, silos, bultos) solo rotan cuando HAY ORDEN y
+    //  TODO el personal asignado está registrado (verde). Si no, solo rotan
+    //  las pantallas con data-siempre="1" (principal y personal).
+    //  Cuando alguien hace login/logout, se salta a la pantalla de personal
+    //  para que se vea la transición de su tarjeta.
     // ============================================================
-    const contenedor = document.getElementById('envasadora');
+    const slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    const slidePersonal = document.querySelector('.slide-personal');
+    const contPuntos = document.getElementById('carrusel-puntos');
+    const puntos = slides.map(function () {
+        const p = document.createElement('span');
+        p.className = 'punto';
+        contPuntos.appendChild(p);
+        return p;
+    });
+    let slideActual = 0;
+    let bloqueado = true;   // hasta saber que hay orden + todos registrados
+    let timerCarrusel = null;
 
-    // Fila de un LED (botón + etiqueta a la derecha). El id va en .led-item,
-    // que es el que recibe la clase .on.
+    function permitidas() {
+        // Las pausadas (data-pausada="1") nunca entran en la rotación.
+        const base = slides.filter(function (s) { return s.dataset.pausada !== '1'; });
+        if (bloqueado) {
+            // Bloqueado (sin orden o alguien sin registrar): solo las de
+            // "siempre" (hora) y las de "solo-bloqueo" (personal).
+            return base.filter(function (s) {
+                return s.dataset.siempre === '1' || s.dataset.soloBloqueo === '1';
+            });
+        }
+        // Desbloqueado (produciendo): todo MENOS las de "solo-bloqueo"
+        // (la de personal, que solo tiene sentido mientras falta algo).
+        return base.filter(function (s) { return s.dataset.soloBloqueo !== '1'; });
+    }
+
+    function mostrarSlide(n) {
+        slideActual = n;
+        slides.forEach(function (s, i) { s.classList.toggle('activa', i === slideActual); });
+        const perm = permitidas();
+        puntos.forEach(function (p, i) {
+            p.classList.toggle('activo', i === slideActual);
+            p.classList.toggle('bloqueado', perm.indexOf(slides[i]) < 0);
+        });
+        // Reinicia el tiempo: la pantalla recién mostrada dura un ciclo
+        // completo aunque se haya llegado por un salto (login/logout).
+        clearTimeout(timerCarrusel);
+        timerCarrusel = setTimeout(siguienteSlide, CAROUSEL_MS);
+        if (slides[slideActual] === slidePersonal) checkMarquee();
+    }
+
+    function siguienteSlide() {
+        const perm = permitidas();
+        // Si la pantalla actual ya no está permitida (indexOf = -1), va a la
+        // primera permitida.
+        const idx = perm.indexOf(slides[slideActual]);
+        mostrarSlide(slides.indexOf(perm[(idx + 1) % perm.length]));
+    }
+
+    // Recalcula el bloqueo con la orden y el personal actuales.
+    let hayOrdenActual = false;
+    let slotsActuales = [];
+    // Cuánto se queda en la pantalla de personal, tras desbloquear, para que
+    // se vea la animación de las tarjetas poniéndose verdes, antes de ocultarla.
+    const DELAY_OCULTAR_PERSONAL_MS = 1500;
+    let timerDesbloqueo = null;
+
+    function actualizarBloqueo() {
+        const asignados = slotsActuales.filter(function (t) { return t.estado !== 'empty'; });
+        const todosRegistrados = asignados.length > 0 &&
+            asignados.every(function (t) { return t.estado === 'active'; });
+        const nuevo = !(hayOrdenActual && todosRegistrados);
+        if (nuevo === bloqueado) return;
+
+        if (nuevo) {
+            // --- Se BLOQUEA (quitaron orden o personal) ---
+            clearTimeout(timerDesbloqueo);
+            timerDesbloqueo = null;
+            bloqueado = true;
+            // Si se estaba viendo una pantalla de producción (ya no permitida),
+            // se salta a la de personal de inmediato.
+            if (permitidas().indexOf(slides[slideActual]) < 0) {
+                mostrarSlide(slides.indexOf(slidePersonal));
+            } else {
+                mostrarSlide(slideActual);
+            }
+            return;
+        }
+
+        // --- Se DESBLOQUEA (orden + todos verdes) ---
+        // Nos quedamos en la pantalla de personal un momento para que se vea
+        // la animación de login; recién después quitamos esa pantalla de la
+        // rotación. Mientras tanto seguimos "bloqueados" para no saltar aún.
+        mostrarSlide(slides.indexOf(slidePersonal));
+        clearTimeout(timerDesbloqueo);
+        timerDesbloqueo = setTimeout(function () {
+            timerDesbloqueo = null;
+            bloqueado = false;
+            // Avanza a la primera pantalla de producción (ya sin personal).
+            siguienteSlide();
+        }, DELAY_OCULTAR_PERSONAL_MS);
+    }
+
+    // ============================================================
+    //  Construcción (una sola vez) de las bolas y de las celdas de bultos.
+    // ============================================================
+    const contSilos = document.getElementById('silos');
+    const contBultos = document.getElementById('bultos-envases');
+    // Para que el CSS ajuste tamaños según 2 o 3 silos.
+    contSilos.style.setProperty('--n', NUM_VALVULADORAS);
+    contBultos.style.setProperty('--n', NUM_VALVULADORAS);
+
+    // LED grande + etiqueta debajo. El id va en .led-item (recibe la clase .on).
     function filaLed(id, color, etiqueta) {
         return '<div class="led-item" id="' + id + '">' +
                    '<span class="led led-' + color + '"><span class="led-bulb"></span></span>' +
@@ -78,214 +228,267 @@
                '</div>';
     }
 
-    function crearValvuladora(indice) {
+    // Caja de dato grande: número + unidad, etiqueta abajo. La unidad se pasa
+    // por parámetro (setpoint/tara en kg; columna en g).
+    function cajaDato(id, etiqueta, unidad) {
+        return '<div class="dato">' +
+                   '<span class="dato-num"><span id="' + id + '">—</span><span class="unidad">' + unidad + '</span></span>' +
+                   '<span class="dato-etiqueta">' + etiqueta + '</span>' +
+               '</div>';
+    }
+
+    function crearSilo(i) {
         const card = document.createElement('section');
-        card.className = 'valvuladora';
+        card.className = 'silo';
         card.innerHTML =
-            // Bola con CSS puro (sin ECharts): un círculo con una capa de agua
-            // cuya altura es el % de llenado. La transición CSS da el movimiento
-            // suave sin repintar un canvas (clave en la NUC sin GPU).
+            '<div class="silo-codigo"></div>' +
+            // Bola con CSS puro: la altura del agua es el % de llenado.
             '<div class="bola">' +
-                '<div class="bola-circulo" id="bola-' + indice + '">' +
-                    '<div class="bola-agua" id="agua-' + indice + '"></div>' +
+                '<div class="bola-circulo" id="bola-' + i + '">' +
+                    '<div class="bola-agua" id="agua-' + i + '"></div>' +
                     '<div class="bola-texto">' +
-                        '<span class="bola-peso" id="peso-' + indice + '">0.0</span>' +
+                        '<span class="bola-peso" id="peso-' + i + '">0.0</span>' +
                         '<span class="bola-unidad">kg</span>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
-            // Contador de bultos. Tres zonas: código (izquierda), "Bultos + número"
-            // (centro, centrado por defecto) y un hueco invisible (derecha) del
-            // mismo peso que el código. Si el código es largo, el centro se
-            // recorre a la derecha en vez de encimarse. El código se escribe con
-            // textContent más abajo (no innerHTML).
-            '<div class="contador">' +
-                '<span class="contador-codigo" title="Identificador de la envasadora"></span>' +
-                '<div class="contador-centro">' +
-                    '<span class="contador-etiqueta">Bultos</span>' +
-                    '<span class="contador-num" id="bultos-' + indice + '">0</span>' +
-                '</div>' +
-                '<span class="contador-spacer"></span>' +
+            '<div class="silo-leds">' +
+                filaLed('led-ciclo-' + i, 'verde', 'Ciclo') +
+                filaLed('led-limpieza-' + i, 'amarillo', 'Limpieza') +
+                filaLed('led-paro-' + i, 'rojo', 'Paro') +
             '</div>' +
-            '<div class="inferior">' +
-                // Izquierda: LEDs en vertical (solo visuales, del PLC) + valores.
-                '<div class="panel-estado">' +
-                    filaLed('led-ciclo-' + indice, 'verde', 'Ciclo') +
-                    filaLed('led-limpieza-' + indice, 'amarillo', 'Limpieza') +
-                    filaLed('led-paro-' + indice, 'rojo', 'Paro') +
-                    '<div class="dato">' +
-                        '<span class="dato-num"><span id="setpoint-' + indice + '">—</span><span class="unidad">kg</span></span>' +
-                        '<span class="dato-etiqueta">Setpoint</span>' +
-                    '</div>' +
-                    '<div class="dato">' +
-                        '<span class="dato-num"><span id="columna-' + indice + '">—</span><span class="unidad">kg</span></span>' +
-                        '<span class="dato-etiqueta">Columna</span>' +
-                    '</div>' +
-                '</div>' +
-                // Derecha: últimos bultos envasados.
-                '<div class="panel-tabla">' +
-                    '<table class="tabla-bultos">' +
-                        '<colgroup><col class="c-id"><col class="c-peso"><col class="c-fecha"></colgroup>' +
-                        '<thead><tr><th>ID</th><th>Peso</th><th>Fecha</th></tr></thead>' +
-                        '<tbody id="tabla-' + indice + '"></tbody>' +
-                    '</table>' +
-                '</div>' +
+            '<div class="silo-datos">' +
+                cajaDato('setpoint-' + i, 'Setpoint', 'kg') +
+                cajaDato('tara-' + i, 'Tara', 'kg') +
+                cajaDato('columna-' + i, 'Columna', 'g') +
             '</div>';
-        contenedor.appendChild(card);
-
+        contSilos.appendChild(card);
         // El código va con textContent (no innerHTML) para no inyectar HTML.
-        const codigo = CODIGOS_VALVULADORAS[indice];
-        if (codigo) {
-            const pill = card.querySelector('.contador-codigo');
-            if (pill) pill.textContent = codigo;
-        }
-
-        pintarTabla(indice, []);
+        card.querySelector('.silo-codigo').textContent = CODIGOS_VALVULADORAS[i] || ('Envasadora ' + (i + 1));
     }
 
-    // dibujarBola actualiza la bola i con CSS: la altura del agua = % de
-    // llenado (peso/tope, acotado 0..1) y el texto = peso real con 1 decimal.
-    // La transición suave la hace el CSS (height), no JS por frame: barato en
-    // una NUC sin GPU. Si el tope es 0 (sin orden), la bola queda vacía.
+    function crearCeldaBultos(i) {
+        const celda = document.createElement('div');
+        celda.className = 'envase';
+        celda.innerHTML =
+            '<span class="envase-codigo"></span>' +
+            '<span class="envase-num" id="bultos-' + i + '">0</span>' +
+            '<span class="envase-etiqueta">bultos</span>';
+        contBultos.appendChild(celda);
+        celda.querySelector('.envase-codigo').textContent = CODIGOS_VALVULADORAS[i] || ('Envasadora ' + (i + 1));
+    }
+
+    for (let i = 0; i < NUM_VALVULADORAS; i++) {
+        crearSilo(i);
+        crearCeldaBultos(i);
+    }
+
+    // ============================================================
+    //  Pantalla de personal: una tarjeta por rectángulo (horizontal).
+    //  Anatomía (como dashboardGo, pero acostada):
+    //    .slot-avatar -> toro + estado   (ancla, SIEMPRE visible)
+    //    .slot-info   -> nombre + rol    (aparece en naranja y verde)
+    //  Se crean UNA vez y se actualizan cambiando la clase de estado, para que
+    //  las transiciones CSS se disparen igual que en dashboardGo.
+    // ============================================================
+    const STATUS_LABELS = { empty: 'Vacante', pending: 'Sin registrar', active: 'En linea' };
+    const contPersonal = document.getElementById('personal-slots');
+    // Para que el CSS reparta el alto entre 1, 2 o 3 rectángulos.
+    contPersonal.style.setProperty('--n', SLOTS_PERSONAL);
+
+    for (let i = 0; i < SLOTS_PERSONAL; i++) {
+        const pista = document.createElement('div');
+        pista.className = 'slot-pista';
+        pista.innerHTML =
+            '<div class="slot-card empty" id="slot-' + i + '">' +
+                '<div class="slot-avatar">' +
+                    '<div class="slot-icon"><img class="slot-foto" src="/static/toro.png" alt=""></div>' +
+                    '<span class="slot-status">Vacante</span>' +
+                '</div>' +
+                '<div class="slot-info">' +
+                    '<div class="slot-name-wrap"><p class="slot-name">No asignado</p></div>' +
+                    '<p class="slot-role">—</p>' +
+                '</div>' +
+            '</div>';
+        contPersonal.appendChild(pista);
+    }
+
+    // pintarPersonal actualiza las tarjetas IN-PLACE (con textContent). Si
+    // algún estado cambió (login/logout/asignación), salta a la pantalla de
+    // personal para que se vea la transición.
+    let primeraVezPersonal = true;
+    function pintarPersonal(lista) {
+        let huboCambio = false;
+        for (let i = 0; i < SLOTS_PERSONAL; i++) {
+            const t = lista[i] || { nombre: 'No asignado', rol: '—', estado: 'empty' };
+            const card = document.getElementById('slot-' + i);
+            if (!card) continue;
+            const clase = 'slot-card ' + t.estado;
+            if (card.className !== clase) huboCambio = true;
+            card.className = clase;
+            card.querySelector('.slot-name').textContent = t.nombre;
+            card.querySelector('.slot-role').textContent = t.rol;
+            card.querySelector('.slot-status').textContent = STATUS_LABELS[t.estado] || 'Vacante';
+        }
+        slotsActuales = lista.slice(0, SLOTS_PERSONAL);
+        checkMarquee();
+        if (huboCambio && !primeraVezPersonal) {
+            mostrarSlide(slides.indexOf(slidePersonal));
+        }
+        primeraVezPersonal = false;
+        actualizarBloqueo();
+    }
+
+    // ============================================================
+    //  Marquee (igual que dashboardGo): si el nombre no cabe, se desplaza
+    //  como letrero de luces. Se mide solo con la tarjeta abierta.
+    // ============================================================
+    function checkMarquee() {
+        document.querySelectorAll('.slot-name').forEach(function (el) {
+            const wrap = el.closest('.slot-name-wrap');
+            if (!wrap) return;
+            const card = el.closest('.slot-card');
+            if (card && card.classList.contains('empty')) { el.classList.remove('marquee'); return; }
+
+            el.classList.remove('marquee');
+            el.style.transform = 'none';
+            el.style.removeProperty('--marquee-offset');
+            el.style.removeProperty('--marquee-dur');
+
+            const textWidth = el.scrollWidth;
+            const wrapWidth = wrap.clientWidth;
+            // wrapWidth 0 = la pantalla no está visible o la tarjeta aún se
+            // está abriendo; se vuelve a medir al terminar la transición.
+            if (wrapWidth > 0 && textWidth > wrapWidth + 2) {
+                const offset = -(textWidth - wrapWidth + 16);
+                const dur = Math.max(8, Math.min(24, (textWidth - wrapWidth) / 30));
+                el.style.setProperty('--marquee-offset', offset + 'px');
+                el.style.setProperty('--marquee-dur', dur.toFixed(1) + 's');
+                el.style.transform = '';
+                el.classList.add('marquee');
+            } else {
+                el.style.transform = '';
+            }
+        });
+    }
+    // Al terminar de abrirse/cerrarse una tarjeta ya se puede medir el nombre.
+    contPersonal.addEventListener('transitionend', function (e) {
+        if (e.target.classList && (e.target.classList.contains('slot-card') ||
+                                   e.target.classList.contains('slot-info'))) {
+            checkMarquee();
+        }
+    });
+    window.addEventListener('resize', checkMarquee);
+
+    // dibujarBola: altura del agua = % de llenado (peso/tope, acotado 0..1) y
+    // ============================================================
+    //  ajustarTexto: encoge la fuente de un elemento SOLO si su contenido se
+    //  desborda del contenedor (ancho o alto). Es el "fit text" que CSS no
+    //  puede hacer solo (CSS no sabe medir el texto). El tamaño grande lo pone
+    //  el CSS; aquí solo se REDUCE cuando un número tiene demasiados dígitos.
+    //
+    //  Cómo: se borra el font-size en línea para volver al del CSS, se mide el
+    //  desbordamiento y se baja la fuente por un factor hasta que quepa (con un
+    //  mínimo para no desaparecer). Barato: un puñado de iteraciones y solo
+    //  cuando cambia el número.
+    // ============================================================
+    function ajustarTexto(el, contenedor, soloAncho) {
+        if (!el) return;
+        // Contenedor contra el que se mide el desbordamiento. Por defecto el
+        // padre; se puede pasar otro (ej. el círculo de la bola, porque el
+        // .bola-texto se encoge al contenido y nunca "desbordaría").
+        const cont = contenedor || el.parentElement;
+        if (!cont) return;
+        el.style.fontSize = '';            // vuelve al tamaño del CSS
+        // px actuales del CSS (base desde la que se encoge).
+        let px = parseFloat(getComputedStyle(el).fontSize);
+        const minPx = 12;                  // nunca más chico que esto
+        let guard = 40;                    // tope de iteraciones por seguridad
+        // ¿Se sale? Ancho siempre; alto solo si no se pidió soloAncho (en la
+        // card de la orden el número comparte alto con el nombre y el lote).
+        const desborda = function () {
+            if (el.scrollWidth > cont.clientWidth) return true;
+            return !soloAncho && el.scrollHeight > cont.clientHeight;
+        };
+        while (guard-- > 0 && px > minPx && desborda()) {
+            px *= 0.92;                    // baja ~8% y vuelve a medir
+            el.style.fontSize = px + 'px';
+        }
+    }
+
+    // texto = peso real con 1 decimal (sin tope). Sin tope (sin orden) la bola
+    // queda vacía.
     function dibujarBola(i, peso, tope) {
         const fraccion = tope > 0 ? Math.max(0, Math.min(1, peso / tope)) : 0;
         const agua = document.getElementById('agua-' + i);
         const txt = document.getElementById('peso-' + i);
         if (agua) agua.style.height = (fraccion * 100).toFixed(1) + '%';
-        if (txt) txt.textContent = peso.toFixed(1);
-    }
-
-    for (let i = 0; i < NUM_VALVULADORAS; i++) {
-        crearValvuladora(i);
+        if (txt) {
+            txt.textContent = peso.toFixed(1);
+            // Se mide contra el círculo (el .bola-texto se ajusta al contenido).
+            ajustarTexto(txt, document.getElementById('bola-' + i));
+        }
     }
 
     // ============================================================
-    //  Aplicar un estado completo a la UI (header + bolas + valores).
+    //  Aplicar un estado completo a las 3 pantallas.
     // ============================================================
     const fmt = function (n) {
         if (n === null || n === undefined || n === '') return '—';
         return n;
     };
 
+    // Dato opcional: "—" si la bola no tiene topic para ese dato.
+    function datoOpcional(id, configurado, valor) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = (configurado && typeof valor === 'number') ? valor.toFixed(1) : '—';
+    }
+
     function aplicarEstado(estado) {
-        // --- Header ---
-        document.getElementById('of-num').textContent = fmt(estado.of);
-        document.getElementById('item-name').textContent = estado.item_name || '';
-        // Lote: lotes COMPLETADOS / totales (sin orden: "—").
+        // --- Pantalla 1: orden ---
         const hayOrden = !!estado.of;
-        document.getElementById('lote-actual').textContent = hayOrden ? fmt(estado.lote_actual) : '—';
-        document.getElementById('lotes-totales').textContent = hayOrden ? fmt(estado.lotes_totales) : '—';
-        document.querySelector('.header-lote').classList.toggle('terminada', !!estado.orden_terminada);
+        const elOf = document.getElementById('of-num');
+        elOf.textContent = fmt(estado.of);
+        ajustarTexto(elOf, document.getElementById('orden-caja'), true);
+        // Nombre de la orden, debajo del número (estilo de etiqueta gris).
+        document.getElementById('item-name').textContent = hayOrden ? (estado.item_name || '—') : '—';
+        // Bultos que llevan / bultos esperados (cantidadBts * noLotes).
+        document.getElementById('bultos-llevan').textContent = hayOrden ? (estado.bultos_orden || 0) : '—';
+        document.getElementById('bultos-esperados').textContent = hayOrden ? (estado.bultos_esperados || 0) : '—';
+        document.getElementById('orden-caja').classList.toggle('terminada', !!estado.orden_terminada);
 
-        // Footer: personal de la orden (viene en el POST): "Nombre (Rol) · ...".
-        pintarTrabajadores(estado.trabajadores || []);
-
-        // --- Valvuladoras ---
+        // --- Pantalla 2 (silos) y 3 (bultos por envase) ---
         const vals = estado.valvuladoras || [];
         for (let i = 0; i < NUM_VALVULADORAS; i++) {
-            const v = vals[i] || { peso: 0, setpoint: null, columna: null };
-            // El llenado usa el peso_producto de la orden como 100% (igual para
-            // las 3 bolas). El setpoint solo se muestra abajo.
+            const v = vals[i] || {};
+            const op = OPCIONALES[i] || {};
+            // El 100% de llenado es el peso_producto de la orden.
             dibujarBola(i, v.peso || 0, estado.peso_producto || 0);
-            document.getElementById('setpoint-' + i).textContent = fmt(v.setpoint);
-            document.getElementById('columna-' + i).textContent = fmt(v.columna);
+            datoOpcional('setpoint-' + i, op.setpoint, v.setpoint);
+            datoOpcional('tara-' + i, op.tara, v.tara);
+            datoOpcional('columna-' + i, op.columna, v.columna);
 
-            // Contador de bultos de la orden y tabla de los últimos bultos.
-            document.getElementById('bultos-' + i).textContent = v.bultos || 0;
-            pintarTabla(i, v.registros || []);
-
-            // LEDs: on/off del PLC. Se leen de la valvuladora (v.leds) y, si no
-            // vienen ahí, del nivel de la envasadora (estado.leds), para que
-            // sirva tanto si son por valvuladora como si son de la máquina.
+            // LEDs: de la valvuladora o, si no vienen, de la máquina.
             const leds = v.leds || estado.leds || {};
             marcarLed('led-paro-' + i, leds.paro);
             marcarLed('led-limpieza-' + i, leds.limpieza);
             marcarLed('led-ciclo-' + i, leds.ciclo);
-        }
-    }
 
-    // pintarTrabajadores arma el footer con textContent (nunca innerHTML con
-    // datos externos): "Omar Ramirez (Envasador) · Michel Davalos (Envasador)".
-    function pintarTrabajadores(lista) {
-        const el = document.getElementById('footer-trabajadores');
-        const frag = document.createDocumentFragment();
-        lista.forEach(function (t, i) {
-            if (i > 0) frag.appendChild(document.createTextNode('  ·  '));
-            frag.appendChild(document.createTextNode(t.nombre || ''));
-            if (t.rol) {
-                const rol = document.createElement('span');
-                rol.className = 'footer-rol';
-                rol.textContent = ' (' + t.rol + ')';
-                frag.appendChild(rol);
-            }
-        });
-        if (!lista.length) frag.appendChild(document.createTextNode('—'));
-        el.replaceChildren(frag);
+            const elBultos = document.getElementById('bultos-' + i);
+            elBultos.textContent = v.bultos || 0;
+            ajustarTexto(elBultos);
+        }
+
+        // --- Bloqueo del carrusel (depende de si hay orden) ---
+        hayOrdenActual = hayOrden;
+        actualizarBloqueo();
     }
 
     // marcarLed enciende/apaga un LED por su id agregando/quitando la clase .on
     function marcarLed(id, encendido) {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('on', !!encendido);
-    }
-
-    // ============================================================
-    //  Tabla de bultos (ID / Peso / Fecha), del más nuevo al más viejo.
-    //  Se arma con textContent (nunca innerHTML con datos externos). Las filas
-    //  que no caben quedan ocultas por el overflow del panel.
-    // ============================================================
-    function dosDigitos(n) { return (n < 10 ? '0' : '') + n; }
-
-    // "2026-09-30T11:27:32-06:00" -> día "30/09" + hora "11:27:32".
-    // Si la fecha no se puede interpretar, se muestra tal cual llegó.
-    function partirFecha(texto) {
-        const d = new Date(texto);
-        if (!texto || isNaN(d.getTime())) return { dia: '', hora: texto || '—' };
-        return {
-            dia: dosDigitos(d.getDate()) + '/' + dosDigitos(d.getMonth() + 1),
-            hora: dosDigitos(d.getHours()) + ':' + dosDigitos(d.getMinutes()) + ':' + dosDigitos(d.getSeconds())
-        };
-    }
-
-    function celda(tr, texto, extraClase, extraTexto) {
-        const td = document.createElement('td');
-        if (extraClase) {
-            const s = document.createElement('span');
-            s.className = extraClase;
-            s.textContent = extraTexto;
-            // La fecha lleva el día atenuado antes de la hora; el peso lleva la
-            // unidad atenuada después del número.
-            if (extraClase === 'fecha-dia') { td.appendChild(s); td.appendChild(document.createTextNode(texto)); }
-            else { td.appendChild(document.createTextNode(texto)); td.appendChild(s); }
-        } else {
-            td.textContent = texto;
-        }
-        tr.appendChild(td);
-    }
-
-    function pintarTabla(i, registros) {
-        const tbody = document.getElementById('tabla-' + i);
-        if (!tbody) return;
-        const filas = document.createDocumentFragment();
-        if (!registros.length) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 3;
-            td.className = 'vacio';
-            td.textContent = 'Sin bultos registrados';
-            tr.appendChild(td);
-            filas.appendChild(tr);
-        }
-        registros.forEach(function (r) {
-            const tr = document.createElement('tr');
-            const peso = (typeof r.peso === 'number') ? r.peso.toFixed(2) : String(r.peso == null ? '—' : r.peso);
-            const f = partirFecha(r.fecha);
-            celda(tr, String(r.id == null || r.id === '' ? '—' : r.id));
-            celda(tr, peso, 'unidad', 'kg');
-            celda(tr, f.hora, f.dia ? 'fecha-dia' : '', f.dia);
-            filas.appendChild(tr);
-        });
-        tbody.replaceChildren(filas);
     }
 
     // ============================================================
@@ -301,59 +504,33 @@
         }
     });
 
+    // Personal en vivo (login/logout del emitter):
+    // [{"nombre":"...","rol":"...","estado":"empty|pending|active"}, ...]
+    evtSource.addEventListener('personal', function (e) {
+        try {
+            pintarPersonal(JSON.parse(e.data) || []);
+        } catch (err) {
+            console.error('[SSE] personal inválido:', err);
+        }
+    });
+
     // ============================================================
-    //  Footer: reloj + indicador de conexión en vivo/offline.
+    //  Reloj grande de la pantalla principal (ya no hay footer).
     // ============================================================
-    const elReloj = document.getElementById('estado-reloj');
-    const elConexion = document.getElementById('estado-conexion');
-
-    // Hay DOS conexiones que vigilar, y las dos se detectan en vivo:
-    //   sseVivo  = navegador ↔ dashboard (el stream SSE). Si se cae, el
-    //              dashboard es inalcanzable → "Offline".
-    //   natsVivo = dashboard ↔ NATS (lo avisa el servidor por el evento 'nats').
-    //              Si se cae, el dashboard sigue pero NO llegan datos del
-    //              PLC/emitter → "Sin datos".
-    // "En vivo" solo cuando AMBAS están bien.
-    let sseVivo = false;
-    let natsVivo = false;
-
-    function pintarEstado() {
-        const ok = sseVivo && natsVivo;
-        elConexion.classList.toggle('online', ok);
-        elConexion.classList.toggle('offline', !ok);
-        // title = texto al pasar el mouse, para distinguir el motivo sin saturar
-        // el footer (que muestra el nombre de la máquina).
-        if (!sseVivo) elConexion.title = 'Offline: sin conexión con el dashboard';
-        else if (!natsVivo) elConexion.title = 'Sin datos: el dashboard no tiene NATS (no llega el PLC)';
-        else elConexion.title = 'En vivo';
-    }
-
+    const elRelojGrande = document.getElementById('principal-reloj');
     function tick() {
-        elReloj.textContent = new Date().toLocaleTimeString('es-MX', { hour12: false });
+        elRelojGrande.textContent = new Date().toLocaleTimeString('es-MX', { hour12: false });
     }
     tick();
     setInterval(tick, 1000);
 
+    // Arranca el carrusel en la pantalla principal (y pinta los puntos).
+    mostrarSlide(0);
+
     evtSource.onopen = function () {
         console.log('%c[SSE] Conexión abierta', 'color: green; font-weight: bold');
-        sseVivo = true;
-        pintarEstado();
     };
-    evtSource.onerror = function () {
-        // readyState 0 = reconectando, 2 = cerrada. En ambos no hay stream vivo.
-        sseVivo = false;
-        pintarEstado();
-    };
-
-    // El servidor avisa el estado de NATS: {"conectado": true/false}.
-    evtSource.addEventListener('nats', function (e) {
-        try {
-            natsVivo = !!JSON.parse(e.data).conectado;
-        } catch (err) {
-            natsVivo = false;
-        }
-        pintarEstado();
-    });
+    // El evento 'nats' se ignora: ya no hay indicador de conexión que pintar.
     </script>
 </body>
 </html>

@@ -23,6 +23,11 @@ type Servidor struct {
 	Maquina     string `yaml:"maquina"`      // nombre visible (footer/título)
 	ResetHora   string `yaml:"reset_hora"`   // HH:MM del reseteo diario; vacío/off = sin reseteo
 	APIToken    string `yaml:"api_token"`    // token del POST/DELETE; vacío = API abierta
+	// CarouselSegundos: cuánto dura cada pantalla del carrusel (default 10).
+	CarouselSegundos int `yaml:"carousel_segundos"`
+	// SlotsPersonal: cuántos rectángulos de personal muestra la pantalla de
+	// personal (1 a 3, default 2). Ej: silos 1/4 = 2 trabajadores, 2/3 = 1.
+	SlotsPersonal int `yaml:"slots_personal"`
 }
 
 // NATS es la conexión a NATS (solo para el estado de conexión y el aviso de
@@ -46,6 +51,11 @@ type MQTT struct {
 type Valvuladora struct {
 	Codigo    string `yaml:"codigo"`     // identificador propio (se muestra; reportes)
 	PesoTopic string `yaml:"peso_topic"` // topic MQTT del que sale su peso (campo value)
+	// Opcionales: si el PLC los publica (mismo formato {"value": ...}). Si se
+	// dejan vacíos, la pantalla muestra "—" para ese dato.
+	SetpointTopic string `yaml:"setpoint_topic"`
+	TaraTopic     string `yaml:"tara_topic"`
+	ColumnaTopic  string `yaml:"columna_topic"`
 }
 
 // Config es el contenido completo de config.yaml.
@@ -75,6 +85,13 @@ func Cargar(ruta string) (*Config, error) {
 	}
 	if strings.TrimSpace(c.Servidor.Port) == "" {
 		c.Servidor.Port = "3000"
+	}
+	if c.Servidor.CarouselSegundos <= 0 {
+		c.Servidor.CarouselSegundos = 10
+	}
+	// 0 = default (2); fuera de rango se ajusta a 1..3 al crear el store.
+	if c.Servidor.SlotsPersonal <= 0 {
+		c.Servidor.SlotsPersonal = 2
 	}
 	if strings.TrimSpace(c.NATS.URL) == "" {
 		c.NATS.URL = "nats://localhost:4222"

@@ -2,13 +2,14 @@
 // peso de cada bola. De cada mensaje solo se usa el campo "value"; el topic ya
 // identifica a qué valvuladora va (el mapeo topic→índice sale del YAML).
 //
-// Hoy MQTT solo trae el peso. En el futuro vendrán más topics (bultos,
-// setpoint, LEDs); se agregarán aquí sin tocar el resto del dashboard.
+// Además del peso, cada valvuladora puede tener topics opcionales de setpoint,
+// tara y columna (mismo formato); solo se suscriben si están en el YAML.
 package mqttclient
 
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -25,13 +26,19 @@ type mensajePeso struct {
 	Value float64 `json:"value"`
 }
 
-// Cliente mantiene la conexión MQTT y enruta cada topic a su bola.
+// destino es a qué bola y a qué campo va un topic.
+type destino struct {
+	bola  int
+	campo store.Campo
+}
+
+// Cliente mantiene la conexión MQTT y enruta cada topic a su bola y campo.
 type Cliente struct {
 	cli        mqtt.Client
 	st         *store.Store
-	brokerURL  string         // para logs
-	topicABola map[string]int // peso_topic -> índice de bola
-	onEstado   func(bool)     // avisa conectado/desconectado (para el footer)
+	brokerURL  string             // para logs
+	topicABola map[string]destino // topic -> (índice de bola, campo)
+	onEstado   func(bool)         // avisa conectado/desconectado (para el footer)
 }
 
 // Nuevo arma el cliente a partir de la config y el store. onEstado puede ser
@@ -40,11 +47,25 @@ func Nuevo(cfg *config.Config, st *store.Store, onEstado func(bool)) *Cliente {
 	c := &Cliente{
 		st:         st,
 		brokerURL:  cfg.BrokerURL(),
-		topicABola: make(map[string]int, len(cfg.Valvuladoras)),
+		topicABola: make(map[string]destino, len(cfg.Valvuladoras)*4),
 		onEstado:   onEstado,
 	}
+	agregar := func(topic string, i int, campo store.Campo) {
+		topic = strings.TrimSpace(topic)
+		if topic == "" {
+			return // topic opcional no configurado
+		}
+		if prev, ok := c.topicABola[topic]; ok {
+			log.Printf("[mqtt] AVISO: el topic %s ya estaba asignado a bola %d (%s); se usa bola %d (%s)",
+				topic, prev.bola+1, prev.campo, i+1, campo)
+		}
+		c.topicABola[topic] = destino{bola: i, campo: campo}
+	}
 	for i, v := range cfg.Valvuladoras {
-		c.topicABola[v.PesoTopic] = i
+		agregar(v.PesoTopic, i, store.CampoPeso)
+		agregar(v.SetpointTopic, i, store.CampoSetpoint)
+		agregar(v.TaraTopic, i, store.CampoTara)
+		agregar(v.ColumnaTopic, i, store.CampoColumna)
 	}
 
 	opts := mqtt.NewClientOptions()
@@ -98,11 +119,11 @@ func (c *Cliente) Desconectar() {
 // (los brokers no conservan las suscripciones tras una reconexión con clean
 // session).
 func (c *Cliente) suscribir() {
-	for topic, idx := range c.topicABola {
-		i := idx // captura por valor para la closure
+	for topic, dst := range c.topicABola {
+		d := dst // captura por valor para la closure
 		t := topic
 		token := c.cli.Subscribe(t, 0, func(_ mqtt.Client, m mqtt.Message) {
-			c.manejar(i, m.Payload())
+			c.manejar(d, m.Payload())
 		})
 		// No se espera el token de forma bloqueante por cada uno; se registra
 		// el error si lo hubo al terminar.
@@ -111,20 +132,20 @@ func (c *Cliente) suscribir() {
 			if err := token.Error(); err != nil {
 				log.Printf("[mqtt] No se pudo suscribir a %s: %v", t, err)
 			} else {
-				log.Printf("[mqtt] Suscrito a %s (bola %d)", t, i+1)
+				log.Printf("[mqtt] Suscrito a %s (bola %d, %s)", t, d.bola+1, d.campo)
 			}
 		}()
 	}
 }
 
-// manejar parsea el payload y actualiza el peso de la bola i.
-func (c *Cliente) manejar(i int, payload []byte) {
+// manejar parsea el payload y actualiza el campo de la bola indicada.
+func (c *Cliente) manejar(d destino, payload []byte) {
 	var msg mensajePeso
 	if err := json.Unmarshal(payload, &msg); err != nil {
-		log.Printf("[mqtt] Payload inválido para bola %d (ignorado): %v", i+1, err)
+		log.Printf("[mqtt] Payload inválido para bola %d (%s, ignorado): %v", d.bola+1, d.campo, err)
 		return
 	}
-	c.st.AplicarPeso(i, msg.Value)
+	c.st.AplicarCampo(d.bola, d.campo, msg.Value)
 }
 
 func (c *Cliente) avisar(conectado bool) {

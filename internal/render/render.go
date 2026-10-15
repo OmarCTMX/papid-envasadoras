@@ -1,6 +1,6 @@
 // Package render arma la página inicial y el JSON de estado que se empuja por
-// SSE al navegador. El dibujo de las bolas (liquidFill) lo hace ECharts en el
-// cliente; aquí solo se serializan los datos.
+// SSE al navegador. El carrusel y las bolas (CSS) se dibujan en el cliente;
+// aquí solo se serializan los datos.
 package render
 
 import (
@@ -10,6 +10,7 @@ import (
 	"log"
 
 	"papid-envasadoras/internal/model"
+	"papid-envasadoras/internal/personal"
 )
 
 // Renderer agrupa las plantillas.
@@ -33,6 +34,20 @@ type DatosIndex struct {
 	Version        string   // marca de versión para invalidar el caché del CSS
 	NumEnvasadoras int      // cuántas bolas/envasadoras muestra este silo (2 o 3)
 	Codigos        []string // identificador de cada bola (CODIGOS_ENVASADORAS), en orden
+	// CarouselSegundos: cuánto dura cada pantalla del carrusel.
+	CarouselSegundos int
+	// SlotsPersonal: cuántos rectángulos tiene la pantalla de personal (1..3).
+	SlotsPersonal int
+	// Opcionales: por bola, qué datos opcionales tienen topic en el YAML. Si
+	// no tienen, la pantalla muestra "—" en vez de un 0 engañoso.
+	Opcionales []Opcionales
+}
+
+// Opcionales indica si setpoint/tara/columna de una bola tienen fuente.
+type Opcionales struct {
+	Setpoint bool
+	Tara     bool
+	Columna  bool
 }
 
 // Index renderiza la página completa.
@@ -42,6 +57,17 @@ func (r *Renderer) Index(d DatosIndex) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// PersonalJSON serializa los slots de personal (evento SSE "personal"):
+// [{"nombre":"...","rol":"...","estado":"empty|pending|active"}, ...]
+func (r *Renderer) PersonalJSON(slots []personal.Slot) string {
+	data, err := json.Marshal(slots)
+	if err != nil {
+		log.Printf("[render] Error serializando personal: %v", err)
+		return "[]"
+	}
+	return string(data)
 }
 
 // EstadoJSON serializa el estado actual para empujarlo por SSE. El navegador lo

@@ -1,8 +1,14 @@
 /* ============================================================
-   DESIGN SYSTEM · PEGADURO — Dashboard de Envasadoras
-   Una envasadora con tres valvuladoras. Cada tarjeta:
-     bola (liquidFill) → contador de bultos → [LEDs + setpoint/columna | tabla]
-   Header: OF / nombre de la orden / lote.  Footer: logo + conexión + reloj.
+   DESIGN SYSTEM · PEGADURO — Dashboard de Envasadoras (carrusel)
+   Tres pantallas que rotan solas, todo grande para verse de lejos:
+     1) Orden:  OF / nombre / lote actual / total
+     2) Silos:  bolas (2 o 3) + LEDs + setpoint / tara / columna
+     3) Bultos: total de la orden + bultos por envasadora
+   Sin header. Footer fijo: logo + conexión + personal + reloj.
+
+   Tamaños: se usan min(vh, vw) para que el texto crezca con la pantalla
+   sin desbordarse ni a lo alto ni a lo ancho. En la pantalla de silos,
+   --n (2 o 3, lo pone el JS) reparte el ancho entre las bolas.
    ============================================================ */
 
 @font-face {
@@ -21,13 +27,13 @@
     /* --- Texto --- */
     --ink: #161412;     /* texto y bordes principales */
     --muted: #7a736a;   /* texto secundario (etiquetas) */
-    --linea: #b9b8b8;   /* líneas suaves (filas de la tabla) */
+    --linea: #b9b8b8;   /* líneas suaves */
 
     /* --- Color de marca / naranja --- */
-    --accent: #ee8935;
+    --accent: #ff5000;
 
     /* --- Colores de estado --- */
-    --ok: #4caf50;      /* conexión en vivo */
+    --ok: #4caf50;      /* conexión en vivo / orden terminada */
     --err: #f44336;     /* offline */
 }
 
@@ -49,156 +55,497 @@ body {
 }
 
 /* ============================================================
-   HEADER — OF / nombre de la orden / lote
-   Tira delgada arriba: todo en una sola línea para dejarle el máximo
-   espacio a las tarjetas.
+   CARRUSEL — las pantallas se apilan y solo la .activa se ve.
+   Se cambia la opacidad (barato: no hay re-layout ni canvas).
    ============================================================ */
-.header {
-    flex-shrink: 0;
-    width: 100%;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 6px 20px;
-    border-bottom: 2px solid var(--ink);
-    background: var(--blanco);
-}
-
-/* OF a la izquierda; el nombre de la orden se centra en el espacio restante. */
-.header-of {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    min-width: 0;
+.carrusel {
+    position: relative;
     flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
-.header-etiqueta {
-    font-size: 11px;
+.slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 2vh 2.5vw 3vh;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.6s ease, visibility 0s linear 0.6s;
+}
+
+.slide.activa {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.6s ease, visibility 0s linear 0s;
+}
+
+/* Puntos de qué pantalla se está viendo (abajo al centro, discretos). */
+.carrusel-puntos {
+    position: absolute;
+    left: 50%;
+    bottom: 0.8vh;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.carrusel-puntos .punto {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--ink);
+    background: transparent;
+    transition: background 0.3s ease;
+}
+
+.carrusel-puntos .punto.activo {
+    background: var(--accent);
+}
+
+/* Bloqueado: las pantallas que no rotan (orden, silos, bultos) se atenúan. */
+.carrusel-puntos .punto.bloqueado {
+    opacity: 0.25;
+}
+
+/* ============================================================
+   PANTALLA 1 — PRINCIPAL: logo, hora y máquina, todo enorme
+   ============================================================ */
+/* Dos columnas: logo a la izquierda | hora + máquina a la derecha. */
+.slide-principal {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4vw;
+}
+
+/* Izquierda: el logo centrado, con aire arriba y abajo. */
+.principal-izq {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8vh 2vw;
+}
+
+.principal-logo {
+    width: 200%;
+    height: 200%;
+    max-height: 92vh;
+    object-fit: contain;
+    display: block;
+}
+
+/* Derecha: hora arriba, máquina abajo, centradas en su columna.
+   container-type:inline-size habilita la unidad cqw (= 1% del ANCHO de esta
+   columna), para dimensionar la hora según el espacio real que tiene y que no
+   se salga de la pantalla. */
+.principal-der {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5vh;
+    text-align: center;
+    container-type: inline-size;
+    /* Despega la hora de la orilla derecha de la pantalla (sin pegarla al
+       logo): un poco de aire a la derecha. */
+    padding-right: 3vw;
+}
+
+.principal-reloj {
+    /* "HH:MM:SS" = 8 caracteres. En JetBrains Mono cada carácter mide ~0.6em,
+       así que 8 chars ≈ 4.8em de ancho. Para que la hora llene su columna sin
+       salirse: fuente ≈ 100cqw / 4.8 ≈ 20cqw. Se acota también por alto (vh).
+       Antes usaba vw (ancho de TODA la ventana), por eso se salía. */
+    font-size: min(34vh, 20cqw);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink);
+}
+
+.principal-maquina {
+    font-size: min(13vh, 15cqw);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--accent);
+}
+
+/* ============================================================
+   PANTALLA 2 — PERSONAL: el diseño de dashboardGo, acostado y grande.
+   Cada rectángulo (.slot-pista) es el espacio total; la tarjeta crece a lo
+   ANCHO desde el centro según el estado (igual que en dashboardGo crece a
+   lo alto):
+     gris (empty)     : solo el toro + "Vacante"      (--ancho-gris)
+     naranja (pending): + nombre y rol                (--ancho-naranja)
+     verde (active)   : todo el rectángulo            (100%)
+   Los anchos son explícitos para que el navegador pueda ANIMARLOS.
+   ============================================================ */
+.personal-slots {
+    --n: 2;                                          /* lo pone el JS */
+    --icono: min(calc(50vh / var(--n)), 15vw);       /* lado del toro */
+    --ancho-gris: calc(var(--icono) + 8vw);
+    --ancho-naranja: 78%;
+
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5vh;
+}
+
+.slot-pista {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    justify-content: center;   /* la tarjeta crece desde el centro */
+    align-items: stretch;
+}
+
+.slot-card {
+    height: 100%;
+    width: var(--ancho-gris);
+    max-width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 2vh 2.5vw;
+    overflow: hidden;
+    background: var(--blanco);
+    border: 3px solid var(--ink);
+    border-radius: 0;
+    box-shadow: 6px 6px 0 var(--ink);
+    transition: width 0.5s ease, background-color 0.4s ease,
+                border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.slot-card.pending { width: var(--ancho-naranja); }
+.slot-card.active  { width: 100%; }
+
+/* --- Ancla: toro + badge de estado. SIEMPRE visible --- */
+.slot-avatar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5vh;
+    flex-shrink: 0;
+}
+
+.slot-icon {
+    width: var(--icono);
+    height: var(--icono);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid var(--ink);
+    border-radius: 0;
+    background: var(--bg);
+    overflow: hidden;
+    transition: border-color 0.4s ease, background-color 0.4s ease;
+}
+
+/* El toro ocupa el recuadro (mismo ajuste que dashboardGo). */
+.slot-foto {
+    width: 100%;
+    height: 150%;
+    object-fit: contain;
+    display: block;
+}
+
+.slot-status {
+    font-size: min(calc(6vh / var(--n)), 2.2vw);
+    font-weight: 700;
+    padding: 0.4em 1em;
+    border: 3px solid var(--ink);
+    border-radius: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+}
+
+/* --- Nombre + rol: colapsado (ancho 0) mientras está vacante --- */
+.slot-info {
+    flex: 1;
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
+    margin-left: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1vh;
+    transition: max-width 0.5s ease, opacity 0.35s ease, margin-left 0.5s ease;
+}
+
+.slot-card.pending .slot-info,
+.slot-card.active .slot-info {
+    max-width: 100%;
+    opacity: 1;
+    margin-left: 3vw;
+}
+
+.slot-name-wrap {
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Nombre en una línea; si no cabe, marquee (como dashboardGo). */
+.slot-name {
+    font-size: min(calc(26vh / var(--n)), 8vw);
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--ink);
+    white-space: nowrap;
+    display: inline-block;
+    transition: color 0.4s ease;
+}
+
+.slot-name.marquee {
+    will-change: transform;
+    animation: marquee-scroll var(--marquee-dur, 6s) linear infinite;
+    animation-delay: 1.5s;
+}
+
+@keyframes marquee-scroll {
+    0%   { transform: translateX(0); }
+    25%  { transform: translateX(0); }
+    40%  { transform: translateX(var(--marquee-offset, -50%)); }
+    65%  { transform: translateX(var(--marquee-offset, -50%)); }
+    80%  { transform: translateX(0); }
+    100% { transform: translateX(0); }
+}
+
+.slot-role {
+    font-size: min(calc(9vh / var(--n)), 3vw);
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
     color: var(--muted);
-    flex-shrink: 0;
-}
-
-.header-of-num {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--ink);
-    letter-spacing: 1px;
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-}
-
-/* Nombre de la orden: ocupa lo que quede, centrado, y recorta con "…". */
-.header-item-name {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 0;
+}
+
+/* --- EMPTY (vacante): punteado, sin sombra, todo gris --- */
+.slot-card.empty {
+    background: var(--bg);
+    border-style: dashed;
+    box-shadow: none;
+}
+.slot-card.empty .slot-icon { border-color: var(--muted); }
+.slot-card.empty .slot-name { color: var(--muted); }
+.slot-card.empty .slot-status {
+    background-color: var(--bg);
+    color: var(--muted);
+    border-color: var(--muted);
+}
+
+/* --- PENDING (asignado, sin registrar): naranja --- */
+.slot-card.pending {
+    background: var(--blanco);
+    border: 3px solid var(--accent);
+    border-radius: 12px;
+    box-shadow: 4px 4px 0 var(--accent);
+}
+.slot-card.pending .slot-icon {
+    border-color: var(--accent);
+    background: var(--blanco);
+}
+.slot-card.pending .slot-name { color: var(--accent); }
+.slot-card.pending .slot-status {
+    background-color: var(--blanco);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* --- ACTIVE (en línea): verde --- */
+.slot-card.active {
+    background: var(--blanco);
+    border: 3px solid var(--ok);
+    border-radius: 12px;
+    box-shadow: 4px 4px 0 var(--ok);
+}
+.slot-card.active .slot-icon {
+    border-color: var(--ok);
+    background: var(--blanco);
+}
+.slot-card.active .slot-name { color: var(--ok); }
+.slot-card.active .slot-status {
+    background-color: var(--ok);
+    color: var(--bg);
+    border-color: var(--ink);
+}
+
+/* ============================================================
+   PANTALLA 3 — ORDEN: un solo rectángulo con el número de orden grande y,
+   debajo, el nombre de la orden.
+   ============================================================ */
+.slide-orden {
+    gap: 2.5vh;
+}
+
+/* El rectángulo ocupa toda la pantalla y centra su contenido (número + nombre). */
+.orden-caja {
     flex: 1;
-    text-align: center;
-}
-
-/* Lote a la derecha del header, en una sola línea. */
-.header-lote {
+    min-height: 0;
+    min-width: 0;
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2vh;
+    padding: 4vh 2vw;
+    background: var(--blanco);
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 6px 6px 0 var(--ink);
+    /* El contenido no debe desbordar la caja ni a lo alto ni a lo ancho. */
+    overflow: hidden;
 }
 
-.header-lote-valor {
-    font-size: 1.8rem;
+/* Nombre de la orden (debajo del número), estilo etiqueta gris. Puede ser
+   largo: se parte en varias líneas para verse COMPLETO (sin recortar). */
+.orden-etiqueta {
+    font-size: min(6vh, 4vw);
     font-weight: 700;
-    color: var(--ink);
-    letter-spacing: 1px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    max-width: 94%;
+    text-align: center;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+/* El número de orden ocupa casi todo el ancho: fuente enorme basada en el
+   ancho de la ventana. tabular-nums evita que "brinque" al cambiar de dígitos.
+   El 26vw está calibrado para ~6 dígitos; si tus órdenes son más largas y se
+   recortan, baja este valor. */
+.orden-of {
+    font-size: min(40vh, 22vw);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: 0.01em;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    color: var(--ink);
 }
 
-.header-lote-valor .sep {
+/* Lote al pie de la card: "LOTE" (etiqueta) + "3 / 10" en grande. */
+.orden-lote {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5vh;
+}
+
+.orden-lote-valor {
+    font-size: min(22vh, 13vw);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink);
+}
+
+.orden-lote-valor .sep {
     color: var(--muted);
-    margin: 0 3px;
+    margin: 0 0.08em;
 }
 
-/* Orden terminada (lotes completados = totales): el lote se pinta en verde. */
-.header-lote.terminada .header-lote-valor {
+/* Orden terminada (lotes completados = totales): el lote en verde. */
+.orden-caja.terminada .orden-lote-valor {
     color: var(--ok);
 }
 
 /* ============================================================
-   CONTENEDOR PRINCIPAL — las tres valvuladoras en fila
+   PANTALLA 2 — SILOS: una columna por bola (2 o 3 según el YAML)
+     código → bola → LEDs → setpoint / tara / columna
    ============================================================ */
-.envasadora {
+.silos {
+    --n: 3; /* lo sobreescribe el JS con NUM_VALVULADORAS */
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    justify-content: center;
-    gap: 18px;
-    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+    gap: 2vw;
 }
 
-/* ============================================================
-   TARJETA DE VALVULADORA (sin título, la bola va pegada arriba)
-     .bola       → liquidFill, toma todo el alto sobrante
-     .contador   → bultos de la orden (hasta 4 dígitos)
-     .inferior   → [panel-estado: LEDs + setpoint/columna] [panel-tabla]
-   ============================================================ */
-.valvuladora {
-    flex: 1 1 0;
-    max-width: 640px;
+.silo {
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 10px 10px;
+    gap: 1.6vh;
+    padding: 1.4vh 1.2vw 1.8vh;
     background: var(--blanco);
-    border: 2px solid var(--ink);
-    border-radius: 8px;
-    box-shadow: 4px 4px 0 var(--ink);
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 6px 6px 0 var(--ink);
 }
 
-/* La bola: el canvas de ECharts se dibuja aquí dentro. */
+/* Código de la envasadora, arriba de la bola. */
+.silo-codigo {
+    flex-shrink: 0;
+    text-align: center;
+    font-size: min(5vh, calc(9vw / var(--n)));
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Bola: toma todo el alto que sobra --- */
+/* container-type:size habilita las unidades cqh/cqw para que el círculo mida
+   el lado más chico de ESTE contenedor y no se deforme. */
 .bola {
     flex: 1;
     width: 100%;
     min-height: 0;
-    /* Centra el círculo en el espacio disponible. */
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 6px;
+    container-type: size;
 }
 
-/* El círculo: fondo claro + contorno naranja (igual que antes). overflow:hidden
-   recorta el agua a la forma del círculo. aspect-ratio 1 lo mantiene redondo. */
+/* Círculo: fondo claro + contorno naranja. overflow:hidden recorta el agua a
+   la forma del círculo. Para que SIEMPRE sea redondo (no un óvalo), el lado se
+   fija al MENOR entre el alto y el ancho del contenedor con min(100%,100%).
+   Así el cuadrado cabe tanto si el contenedor es alto y angosto como ancho y
+   bajo, y aspect-ratio lo mantiene cuadrado. */
 .bola-circulo {
     position: relative;
+    width: min(100cqw, 100cqh);
     aspect-ratio: 1 / 1;
-    /* Toma el lado más chico del contenedor para no deformarse. */
-    height: 100%;
-    max-width: 100%;
     border-radius: 50%;
     background: #f3efe6;
-    border: 5px solid #ee8935;
+    border: 8px solid #ee8935;
     overflow: hidden;
-    /* Centra el número. */
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* El agua: pegada abajo, su ALTURA es el % de llenado. La transición hace el
-   movimiento suave (sube/baja) sin repintar nada por frame: barato sin GPU.
-   Degradado gris: claro arriba -> gris abajo (los mismos tonos de antes). */
+/* El agua: pegada abajo, su ALTURA es el % de llenado. La transición da el
+   movimiento suave sin repintar nada por frame (barato sin GPU). */
 .bola-agua {
     position: absolute;
     left: 0;
@@ -209,20 +556,16 @@ body {
     transition: height 0.6s ease-out;
 }
 
-/* Ola estática tipo "onda S": sube de un lado y baja del otro (como un seno),
-   no una cresta simétrica. Es un SVG de fondo pegado al borde superior del
-   agua, asomando hacia ARRIBA. Al llegar al 100% la cresta sale del círculo
-   (overflow:hidden) y se ve lleno completo. Sin animación: barato en la NUC.
-   El color #c4c0b8 empata con la superficie del agua. */
+/* Ola estática tipo "onda S" asomando por encima del nivel del agua. Al 100%
+   sale del círculo (overflow:hidden) y se ve lleno completo. */
 .bola-agua::before {
     content: "";
     position: absolute;
     left: 0;
-    top: -18px;               /* qué tanto asoma la ola por encima del nivel */
+    top: -18px;
     width: 100%;
-    height: 20px;             /* alto de la ola */
+    height: 20px;
     background: #c4c0b8;
-    /* La curva: sube a la izquierda, baja a la derecha. */
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 20 L0 10 C 25 -6 75 26 100 10 L100 20 Z' fill='%23000'/%3E%3C/svg%3E");
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0 20 L0 10 C 25 -6 75 26 100 10 L100 20 Z' fill='%23000'/%3E%3C/svg%3E");
     -webkit-mask-size: 100% 100%;
@@ -237,127 +580,36 @@ body {
     z-index: 1;
     display: flex;
     align-items: baseline;
-    gap: 4px;
-    color: #161412;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 700;
+    gap: 0.15em;
+    color: var(--ink);
+    font-weight: 800;
 }
 
 .bola-peso {
-    /* Tamaño del número dentro de la bola. clamp(mínimo, preferido, máximo):
-       usa el preferido (vh = % del alto de la ventana) pero no baja del mínimo
-       ni pasa del máximo. Sube estos valores si lo quieres más grande. */
-    font-size: clamp(3rem, 18vh, 8rem);
-    line-height: 1;
+    /* MUY grande, casi al nivel de la bola. tabular-nums para que no "brinque"
+       al cambiar de dígitos ni al aparecer el signo "-". */
+    font-size: min(26vh, calc(30vw / var(--n)));
+    line-height: 0.9;
+    font-variant-numeric: tabular-nums;
 }
 
 .bola-unidad {
-    font-size: clamp(1.2rem, 5vh, 2.6rem);
+    font-size: min(6vh, calc(7vw / var(--n)));
 }
 
-/* ============================================================
-   CONTADOR DE BULTOS — "píldora" debajo de la bola
-   Ancha a propósito: el número puede llegar a 4 dígitos (ej. 1000).
-   ============================================================ */
-.contador {
+/* --- LEDs: fila de 3 grandes, etiqueta debajo --- */
+.silo-leds {
     flex-shrink: 0;
-    align-self: center;
-    width: 82%;
-    /* Grid de 3 columnas: [código] [Bultos + número] [hueco].
-       Las columnas laterales son 1fr y en grid un 1fr NUNCA es más angosto que
-       su contenido: con código corto ambas miden igual y el centro queda
-       centrado; con código largo la izquierda crece y el centro se RECORRE a
-       la derecha en vez de encimarse. */
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    column-gap: 14px;
-    padding: 2px 24px;
-    border: 2px solid var(--ink);
-    border-radius: 999px;
-    background: var(--bg);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8vw;
 }
 
-/* Zona central: "Bultos" + número. */
-.contador-centro {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-}
-
-/* Hueco derecho invisible (tercera columna): equilibra al código. */
-.contador-spacer {
-    min-width: 0;
-}
-
-.contador-etiqueta {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--muted);
-}
-
-/* Código identificador de la envasadora (del .env). Mismo estilo neutro del
-   dashboard: píldora discreta a la izquierda de "Bultos", sin color propio. */
-.contador-codigo {
-    /* Primera columna del grid. Sin min-width:0 a propósito: así la columna
-       mide al menos el texto completo y empuja el centro si es largo. */
-    justify-self: start;
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--ink);
-    white-space: nowrap;
-    text-transform: uppercase;
-}
-
-.contador-num {
-    font-size: clamp(1.5rem, 4.4vh, 2.6rem);
-    font-weight: 700;
-    line-height: 1.1;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 2px;
-    min-width: 4ch; /* reserva el espacio de 4 dígitos: no "brinca" al crecer */
-    text-align: center;
-}
-
-/* ============================================================
-   ZONA INFERIOR — dos paneles lado a lado
-   ============================================================ */
-.inferior {
-    flex-shrink: 0;
-    width: 100%;
-    height: clamp(170px, 31vh, 300px);
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
-    gap: 8px;
-}
-
-.panel-estado,
-.panel-tabla {
-    min-width: 0;
-    min-height: 0;
-    border: 2px solid var(--ink);
-    border-radius: 6px;
-    background: var(--bg);
-}
-
-/* --- Panel izquierdo: LEDs en vertical + setpoint y columna --- */
-.panel-estado {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 2px;
-    padding: 6px 10px;
-}
-
-/* Cada fila: LED + su etiqueta a la derecha. */
 .led-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 0.6vh;
     min-width: 0;
 }
 
@@ -367,14 +619,13 @@ body {
    encendido = color vivo + glow. Su on/off llega del PLC por valvuladora.
    ============================================================ */
 .led {
-    --led: clamp(22px, 3.8vh, 40px);   /* un poco más chicos que antes (48px) */
+    --led: min(8vh, calc(11vw / var(--n, 3)));
     position: relative;
     width: var(--led);
     height: var(--led);
     border-radius: 50%;
-    /* Contorno gris grueso del botón. */
     background: linear-gradient(145deg, #c9c5bc, #9a958c);
-    padding: calc(var(--led) * 0.16);  /* grosor del contorno (≈ 6-7px) */
+    padding: calc(var(--led) * 0.14);
     box-shadow:
         inset 0 2px 2px rgba(255, 255, 255, 0.5),
         inset 0 -2px 3px rgba(0, 0, 0, 0.3),
@@ -382,9 +633,8 @@ body {
     flex-shrink: 0;
 }
 
-/* El centro: un círculo de color PLANO. */
 .led-bulb {
-    display: block; /* Permite que el span respete width y height. */
+    display: block;
     width: 100%;
     height: 100%;
     border-radius: 50%;
@@ -397,279 +647,161 @@ body {
 .led-amarillo .led-bulb { background: #8a7414; }
 .led-verde    .led-bulb { background: #1f6b2a; }
 
-/* --- ENCENDIDO: mismo color pero vivo + glow --- */
+/* --- ENCENDIDO: mismo color pero vivo + glow (escala con el LED) --- */
 .led-item.on .led-rojo .led-bulb {
     background: #f23227;
-    box-shadow: 0 0 12px 3px rgba(244, 67, 54, 0.85), 0 0 22px 5px rgba(244, 67, 54, 0.45);
+    box-shadow: 0 0 calc(var(--led) * 0.3) calc(var(--led) * 0.08) rgba(244, 67, 54, 0.85),
+                0 0 calc(var(--led) * 0.55) calc(var(--led) * 0.14) rgba(244, 67, 54, 0.45);
 }
 .led-item.on .led-amarillo .led-bulb {
     background: #f5c81f;
-    box-shadow: 0 0 12px 3px rgba(242, 192, 24, 0.85), 0 0 22px 5px rgba(242, 192, 24, 0.45);
+    box-shadow: 0 0 calc(var(--led) * 0.3) calc(var(--led) * 0.08) rgba(242, 192, 24, 0.85),
+                0 0 calc(var(--led) * 0.55) calc(var(--led) * 0.14) rgba(242, 192, 24, 0.45);
 }
 .led-item.on .led-verde .led-bulb {
     background: #3bd053;
-    box-shadow: 0 0 12px 3px rgba(52, 194, 74, 0.85), 0 0 22px 5px rgba(52, 194, 74, 0.45);
+    box-shadow: 0 0 calc(var(--led) * 0.3) calc(var(--led) * 0.08) rgba(52, 194, 74, 0.85),
+                0 0 calc(var(--led) * 0.55) calc(var(--led) * 0.14) rgba(52, 194, 74, 0.45);
 }
 
 .led-label {
-    font-size: clamp(10px, 1.45vh, 13px);
+    font-size: min(2.6vh, calc(4.2vw / var(--n, 3)));
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.06em;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 100%;
 }
 
-/* La etiqueta se ve más nítida cuando el LED está encendido. */
 .led-item.on .led-label { color: var(--ink); }
 
-/* --- Setpoint y columna: "15 kg  SETPOINT" --- */
+/* --- Setpoint / Tara / Columna: 3 cajas con número grande --- */
+.silo-datos {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6vw;
+}
+
 .dato {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
     min-width: 0;
-    padding-top: 2px;
-    border-top: 1px solid var(--linea);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4vh;
+    padding: 0.8vh 0.3vw;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: var(--bg);
 }
 
 .dato-num {
-    font-size: clamp(1.15rem, 3.3vh, 2rem);
-    font-weight: 700;
-    line-height: 1.1;
+    font-size: min(6vh, calc(9vw / var(--n)));
+    font-weight: 800;
+    line-height: 1;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
 .dato-num .unidad {
-    font-size: 0.55em;
+    font-size: 0.45em;
     font-weight: 400;
     color: var(--muted);
-    margin-left: 3px;
+    margin-left: 0.15em;
 }
 
 .dato-etiqueta {
-    font-size: clamp(9px, 1.3vh, 12px);
+    font-size: min(2.2vh, calc(3.6vw / var(--n)));
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.06em;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-/* --- Panel derecho: tabla de bultos (ID / Peso / Fecha) --- */
-.panel-tabla {
-    overflow: hidden; /* las filas más viejas quedan fuera de la vista */
-}
-
-.tabla-bultos {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: clamp(10px, 1.5vh, 13px);
-    font-variant-numeric: tabular-nums;
-}
-
-.tabla-bultos col.c-id    { width: 24%; }
-.tabla-bultos col.c-peso  { width: 30%; }
-.tabla-bultos col.c-fecha { width: 46%; }
-
-.tabla-bultos th {
-    padding: 5px 6px;
-    text-align: left;
-    font-size: 0.9em;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--muted);
-    background: var(--blanco);
-    border-bottom: 2px solid var(--ink);
-}
-
-.tabla-bultos td {
-    padding: 4px 6px;
-    font-weight: 700;
-    color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    border-bottom: 1px solid var(--linea);
-}
-
-/* Líneas verticales entre columnas, como en el dibujo. */
-.tabla-bultos th + th,
-.tabla-bultos td + td {
-    border-left: 2px solid var(--ink);
-}
-
-/* El bulto más reciente (primera fila) resaltado en naranja. */
-.tabla-bultos tbody tr:first-child td {
-    color: var(--accent);
-}
-
-.tabla-bultos .fecha-dia {
-    font-weight: 400;
-    color: var(--muted);
-    margin-right: 4px;
-}
-
-.tabla-bultos .unidad {
-    font-weight: 400;
-    color: var(--muted);
-    margin-left: 2px;
-}
-
-/* Fila de "sin registros". */
-.tabla-bultos td.vacio {
-    text-align: center;
-    font-weight: 400;
-    color: var(--muted);
-    border-left: none;
-    padding: 14px 6px;
+    max-width: 100%;
 }
 
 /* ============================================================
-   FOOTER / BARRA DE ESTADO  (mismo estilo que papid-dashboard)
-   logo + conexión a la izquierda, trabajadores al centro, reloj a la derecha.
+   PANTALLA 5 — BULTOS: una sola card con "ENVASADORAS" grande arriba y los
+   contadores de cada envasadora abajo (separados por líneas, sin su propia
+   caja). El total de la orden ya se muestra en la pantalla de la orden.
    ============================================================ */
-.barra-estado {
-    flex-shrink: 0;
-    width: 100%;
+.slide-bultos {
+    gap: 2.5vh;
+}
+
+/* La card ocupa toda la pantalla: título arriba + fila de contadores abajo. */
+.bultos-card {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 24px;
-    border-top: 2px solid var(--ink);
+    flex-direction: column;
+    padding: 2vh 2vw 3vh;
     background: var(--blanco);
-    font-size: 15px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 6px 6px 0 var(--ink);
 }
 
-.footer-izq {
-    display: inline-flex;
-    align-items: center;
-    gap: 16px;
+.bultos-envases {
+    --n: 3; /* lo sobreescribe el JS */
     flex: 1;
-    justify-content: flex-start;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
 }
 
-.logoPegaduro {
-    height: 40px;
-    width: auto;
-    display: block;
-    flex-shrink: 0;
-}
-
-.estado-conexion {
-    display: inline-flex;
+/* Cada envasadora: sin su propia caja; se separan con una línea vertical. */
+.envase {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    gap: 0.5vh;
+    padding: 0 1vw;
 }
 
-.estado-punto {
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--ink);
-    flex-shrink: 0;
+/* Separación entre envasadoras: línea gruesa y gris (como el código). */
+.envase + .envase {
+    border-left: 12px solid var(--muted);
 }
 
-/* Nombre de la máquina: toma el color del estado, igual que el punto (dot). */
-.estado-maquina {
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    white-space: nowrap;
-}
-
-.estado-conexion.online .estado-punto {
-    background: var(--ok);
-    animation: latido 1.6s ease-in-out infinite;
-}
-.estado-conexion.online .estado-maquina {
-    color: var(--ok);
-}
-
-.estado-conexion.offline .estado-punto {
-    background: var(--err);
-}
-.estado-conexion.offline .estado-maquina {
-    color: var(--err);
-}
-
-@keyframes latido {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.35; }
-}
-
-/* Rol del trabajador, más tenue que el nombre. */
-.footer-rol {
-    font-size: 0.7em;
-    color: var(--muted);
-}
-
-/* Centro: nombres de los trabajadores, en negro. */
-.footer-trabajadores {
-    flex: 2;
-    text-align: center;
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--ink);
+.envase-codigo {
+    font-size: min(7vh, calc(13vw / var(--n)));
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 95%;
+    color: var(--muted);
 }
 
-.estado-reloj {
+.envase-num {
+    /* Lo más grande que entra sin desbordar la celda ni a lo alto ni ancho.
+       Sin el título arriba hay más alto disponible. */
+    font-size: min(78vh, calc(62vw / var(--n)));
+    font-weight: 800;
+    line-height: 1;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
-    font-size: 2rem;
-    letter-spacing: 2px;
-    line-height: 1;
-    flex: 1;
-    text-align: right;
 }
 
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
-@media (max-width: 900px) {
-    .envasadora {
-        gap: 10px;
-        padding: 10px;
-    }
-
-    .valvuladora {
-        padding: 6px;
-    }
-
-    /* En pantallas angostas los paneles se apilan: LEDs arriba, tabla abajo. */
-    .inferior {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(0, 1fr);
-        height: clamp(220px, 40vh, 340px);
-    }
-
-    .header-item-name {
-        display: none; /* en pantallas chicas prioriza OF y lote */
-    }
-
-    .estado-reloj {
-        font-size: 1.4rem;
-    }
-
-    .footer-trabajadores {
-        font-size: 1.1rem;
-    }
-
-    .estado-maquina {
-        font-size: 1.1rem;
-    }
+.envase-etiqueta {
+    font-size: min(4vh, calc(7vw / var(--n)));
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
 }
+
+/* Sin footer: el carrusel (.carrusel) ocupa toda la ventana. La hora, el logo
+   y el nombre de la máquina viven ahora en la pantalla principal. */

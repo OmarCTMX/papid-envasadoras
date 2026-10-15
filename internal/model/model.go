@@ -118,6 +118,7 @@ type Valvuladora struct {
 	Codigo   string  `json:"codigo,omitempty"`
 	Peso     float64 `json:"peso"`     // peso actual en la báscula (kg)
 	Setpoint float64 `json:"setpoint"` // kg, del PLC (solo se muestra)
+	Tara     float64 `json:"tara"`     // kg, del PLC (solo se muestra)
 	Columna  float64 `json:"columna"`  // kg, del PLC (solo se muestra)
 	Leds     *Leds   `json:"leds,omitempty"`
 	// Bultos: al ENTRAR es el contador del PLC; al SALIR es el de la orden
@@ -176,6 +177,9 @@ type Estado struct {
 	// No se muestran en pantalla (el operador solo ve los bultos de cada bola).
 	BultosOrden   int `json:"bultos_orden"`
 	BultosPorLote int `json:"bultos_por_lote"`
+	// BultosEsperados: total de bultos de la orden = bultos_por_lote * lotes
+	// totales (cantidadBts * noLotes). 0 si no hay orden.
+	BultosEsperados int `json:"bultos_esperados"`
 
 	Valvuladoras []Valvuladora `json:"valvuladoras"`
 	// Leds a nivel de la máquina (opcional, compatibilidad). Si cada
@@ -227,9 +231,8 @@ func (e *Estado) Normalizar(numEnvasadoras int) {
 	}
 	for i := range e.Valvuladoras {
 		v := &e.Valvuladoras[i]
-		if v.Peso < 0 {
-			v.Peso = 0
-		}
+		// El peso puede ser NEGATIVO (la báscula puede marcar menos de 0, p.ej.
+		// tras una tara): se muestra tal cual, no se recorta.
 		if v.Bultos < 0 {
 			v.Bultos = 0
 		}

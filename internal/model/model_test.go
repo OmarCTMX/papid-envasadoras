@@ -28,17 +28,18 @@ func TestNormalizarRecorta(t *testing.T) {
 	}
 }
 
-// TestNormalizarPeso verifica que los pesos negativos se lleven a 0 y que un
-// peso mayor al setpoint NO se acote (el tope visual lo pone el frontend con
-// peso/setpoint).
+// TestNormalizarPeso verifica que el peso se conserve tal cual: ni se acota un
+// peso mayor al setpoint (el tope visual lo pone el frontend con peso/setpoint)
+// ni se recorta un peso NEGATIVO (la báscula puede marcar menos de 0 tras una
+// tara, y se muestra con su signo).
 func TestNormalizarPeso(t *testing.T) {
 	e := Estado{Valvuladoras: []Valvuladora{{Peso: 150, Setpoint: 20}, {Peso: -20}, {Peso: 75}}}
 	e.Normalizar(3)
 	if e.Valvuladoras[0].Peso != 150 {
 		t.Errorf("peso 150 debía conservarse (sin tope), obtuve %v", e.Valvuladoras[0].Peso)
 	}
-	if e.Valvuladoras[1].Peso != 0 {
-		t.Errorf("peso -20 debía llevarse a 0, obtuve %v", e.Valvuladoras[1].Peso)
+	if e.Valvuladoras[1].Peso != -20 {
+		t.Errorf("peso -20 debía conservarse (negativo permitido), obtuve %v", e.Valvuladoras[1].Peso)
 	}
 	if e.Valvuladoras[2].Peso != 75 {
 		t.Errorf("peso 75 debía conservarse, obtuve %v", e.Valvuladoras[2].Peso)

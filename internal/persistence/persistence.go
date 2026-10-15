@@ -18,6 +18,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"papid-envasadoras/internal/model"
+	"papid-envasadoras/internal/personal"
 )
 
 const bucketName = "papid_envasadoras_orden"
@@ -96,6 +97,29 @@ func NewEmitter(nc *nats.Conn) (*EmitterKV, error) {
 		return nil, fmt.Errorf("bucket %q: %w", bucketEmitter, err)
 	}
 	return &EmitterKV{kv: kv}, nil
+}
+
+// CargarPersonal lee SOLO el personal (con su status de login) que el emitter
+// guardó para un silo. existe=false si el silo no tiene clave (sin asignar):
+// en ese caso la pantalla debe quedar con todos los slots vacantes.
+func (e *EmitterKV) CargarPersonal(code string) (personas []personal.PersonaSync, existe bool, err error) {
+	if e == nil {
+		return nil, false, nil
+	}
+	entry, err := e.kv.Get(code)
+	if err != nil {
+		if errors.Is(err, nats.ErrKeyNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	var v struct {
+		Personal []personal.PersonaSync `json:"personal"`
+	}
+	if err := json.Unmarshal(entry.Value(), &v); err != nil {
+		return nil, false, fmt.Errorf("valor del emitter inválido en %q: %w", code, err)
+	}
+	return v.Personal, true, nil
 }
 
 // Cargar lee la orden/personal del emitter para un silo. nil = sin dato.
