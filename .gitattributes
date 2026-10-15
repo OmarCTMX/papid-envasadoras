@@ -2,6 +2,3 @@
 # convertirlos a CRLF al hacer checkout, y entonces fallarían en la NUC (Linux)
 # con errores tipo "bad interpreter" o "syntax error near $'\r'".
 *.sh text eol=lf
-
-# Scripts de autostart/cambio de pantalla (por si alguno no termina en .sh).
-change_window/* text eol=lf
