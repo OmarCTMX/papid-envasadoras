@@ -178,6 +178,18 @@ func main() {
 		}
 		restaurarPersonal()
 
+		// Solo en PRUEBAS: además escucha el proceso (peso/bultos/leds) por
+		// NATS en papid.envasadora.<code>, para poder inyectar desde otra PC.
+		// En producción el proceso llega por MQTT; por eso va tras la bandera.
+		if os.Getenv("DEBUG_PRUEBAS") == "1" {
+			cfgProc := natsclient.Config{MachineCode: machineCode}
+			if _, err := natsclient.Suscribir(c, cfgProc, st); err != nil {
+				log.Printf("[nats] (pruebas) No se pudo suscribir al proceso: %v", err)
+			} else {
+				log.Printf("[nats] (pruebas) Suscrito al proceso %s para inyección", cfgProc.Subject())
+			}
+		}
+
 		snap, err := kv.Cargar(machineCode)
 		switch {
 		case err != nil:

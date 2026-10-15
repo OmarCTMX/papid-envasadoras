@@ -20,14 +20,16 @@
 }
 
 :root {
+    /* --- MODO OSCURO --- fondo negro, texto blanco.
+       Toda la UI usa estas variables, así que invertirlas aquí tiñe todo. */
     /* --- Superficies --- */
-    --bg: #f3efe6;      /* fondo de la pantalla */
-    --blanco: #e1ddd5;  /* superficie de las tarjetas */
+    --bg: #0b0b0d;      /* fondo de la pantalla (negro) */
+    --blanco: #1c1c20;  /* superficie de las tarjetas (gris muy oscuro) */
 
     /* --- Texto --- */
-    --ink: #161412;     /* texto y bordes principales */
-    --muted: #7a736a;   /* texto secundario (etiquetas) */
-    --linea: #b9b8b8;   /* líneas suaves */
+    --ink: #f4f2ee;     /* texto y bordes principales (blanco) */
+    --muted: #9a948b;   /* texto secundario (etiquetas) */
+    --linea: #3a3a40;   /* líneas suaves */
 
     /* --- Color de marca / naranja --- */
     --accent: #ff5000;
@@ -536,8 +538,8 @@ body {
     width: min(100cqw, 100cqh);
     aspect-ratio: 1 / 1;
     border-radius: 50%;
-    background: #f3efe6;
-    border: 8px solid #ee8935;
+    background: var(--bg);
+    border: 8px solid var(--accent);
     overflow: hidden;
     display: flex;
     align-items: center;
